@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Mission Fit - Sistema de Gestión de Gimnasio v3</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap">
+    <style>
+        :root {
+            --primary: #2563EB;
+            --primary-light: #3B82F6;
+            --primary-dark: #1D4ED8;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --danger: #EF4444;
+            --info: #06B6D4;
+            --bg-primary: #FFFFFF;
+            --bg-secondary: #F8FAFC;
+            --bg-tertiary: #EFF6FF;
+            --text-primary: #0F172A;
+            --text-secondary: #64748B;
+            --border: #E2E8F0;
+            --shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.15);
+            --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.15);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            background: var(--bg-secondary);
+        }
+
+        body {
+            color: var(--text-primary);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        /* ============================================
+           LOGIN PAGE
+           ============================================ */
+        .login-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+            padding: 20px;
+        }
+
+        .login-box {
+            background: white;
+            border-radius: 16px;
+            box-shadow: var(--shadow-xl);
+            padding: 40px;
+            width: 100%;
+            max-width: 420px;
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .login-header h1 {
+            font-size: 32px;
+            font-weight: 800;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #2563EB, #1D4ED8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .login-header p {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            font-size: 15px;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .demo-users {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+            border-left: 4px solid var(--primary);
+        }
+
+        .demo-users p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .demo-user {
+            font-size: 12px;
+            color: var(--text-primary);
+            margin: 4px 0;
+            font-family: 'Courier New', monospace;
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .btn-login:active {
+            transform: translateY(0);
+        }
+
+        /* ============================================
+           APP LAYOUT
+           ============================================ */
+        .app-wrapper {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 260px;
+            background: white;
+            border-right: 1px solid var(--border);
+            padding: 20px 0;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            box-shadow: var(--shadow);
+        }
+
+        .sidebar-header {
+            padding: 0 20px;
+            margin-bottom: 30px;
+        }
+
+        .sidebar-logo {
+            font-size: 28px;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 4px;
+        }
+
+        .sidebar-subtitle {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .user-info {
+            padding: 16px 20px;
+            background: var(--bg-tertiary);
+            margin: 0 12px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            border-left: 3px solid var(--primary);
+        }
+
+        .user-info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+
+        .user-info-label {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .user-info-value {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .nav-menu {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 0 12px;
+            list-style: none;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-weight: 500;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+            font-size: 14px;
+        }
+
+        .nav-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--primary);
+        }
+
+        .nav-item.active {
+            background: var(--bg-tertiary);
+            color: var(--primary);
+            border-left-color: var(--primary);
+            font-weight: 600;
+        }
+
+        .nav-item.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .nav-icon {
+            font-size: 18px;
+        }
+
+        .sidebar-footer {
+            padding: 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .btn-logout {
+            width: 100%;
+            padding: 10px 16px;
+            background: #FEE2E2;
+            color: var(--danger);
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-logout:hover {
+            background: #FECACA;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-bottom: 1px solid var(--border);
+            box-shadow: var(--shadow);
+        }
+
+        .header-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .header-subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .content-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+        }
+
+        .view {
+            display: none;
+        }
+
+        .view.active {
+            display: block;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* ============================================
+           DASHBOARD CARDS
+           ============================================ */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--shadow-md);
+            transition: all 0.3s;
+            border-top: 4px solid var(--primary);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .stat-card.success {
+            border-top-color: var(--success);
+        }
+
+        .stat-card.warning {
+            border-top-color: var(--warning);
+        }
+
+        .stat-card.danger {
+            border-top-color: var(--danger);
+        }
+
+        .stat-card.info {
+            border-top-color: var(--info);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, rgba(37, 99, 235, 0.05) 0%, transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: 800;
+            color: var(--text-primary);
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .stat-change {
+            font-size: 12px;
+            color: var(--success);
+            margin-top: 8px;
+            font-weight: 600;
+        }
+
+        .stat-change.negative {
+            color: var(--danger);
+        }
+
+        /* ============================================
+           CARDS & CONTENT
+           ============================================ */
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--shadow-md);
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-title-icon {
+            font-size: 24px;
+        }
+
+        /* ============================================
+           FORMS
+           ============================================ */
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 10px 12px;
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        /* ============================================
+           BUTTONS
+           ============================================ */
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--primary);
+            border: 1.5px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        /* ============================================
+           MODALS
+           ============================================ */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-xl);
+        }
+
+        .modal-header {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: var(--bg-tertiary);
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            color: var(--text-secondary);
+        }
+
+        /* ============================================
+           TABLE
+           ============================================ */
+        .table-responsive {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        thead {
+            background: var(--bg-tertiary);
+        }
+
+        th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border);
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.3px;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        tbody tr:hover {
+            background: var(--bg-tertiary);
+        }
+
+        /* ============================================
+           BADGE
+           ============================================ */
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .badge-success {
+            background: #D1FAE5;
+            color: #047857;
+        }
+
+        .badge-warning {
+            background: #FEF3C7;
+            color: #B45309;
+        }
+
+        .badge-danger {
+            background: #FEE2E2;
+            color: #B91C1C;
+        }
+
+        .badge-info {
+            background: #CFFAFE;
+            color: #0369A1;
+        }
+
+        /* ============================================
+           RESPONSIVE
+           ============================================ */
+        @media (max-width: 1024px) {
+            .dashboard-grid {
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 16px;
+            }
+
+            .sidebar {
+                width: 220px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .app-wrapper {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                max-height: 120px;
+                padding: 12px;
+                flex-direction: row;
+                align-items: center;
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+
+            .sidebar-header {
+                padding: 0;
+                margin: 0;
+                min-width: auto;
+            }
+
+            .sidebar-logo {
+                font-size: 20px;
+                margin-bottom: 0;
+            }
+
+            .sidebar-subtitle {
+                display: none;
+            }
+
+            .nav-menu {
+                flex-direction: row;
+                gap: 4px;
+                padding: 0;
+                flex: 1;
+                margin-left: 20px;
+                overflow-x: auto;
+            }
+
+            .nav-item {
+                flex-shrink: 0;
+                padding: 8px 12px;
+                font-size: 12px;
+            }
+
+            .user-info {
+                display: none;
+            }
+
+            .sidebar-footer {
+                display: none;
+            }
+
+            .content-area {
+                padding: 16px;
+            }
+
+            .header {
+                padding: 16px;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            }
+
+            .stat-card {
+                padding: 16px;
+            }
+
+            .stat-value {
+                font-size: 24px;
+            }
+
+            .card {
+                padding: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- LOGIN PAGE -->
+    <div id="loginPage" class="login-container">
+        <div class="login-box">
+            <div class="login-header">
+                <h1>💪 Mission Fit</h1>
+                <p>Sistema de Gestión de Gimnasio v3</p>
+            </div>
+
+            <div class="demo-users">
+                <p>🔓 Usuarios de prueba:</p>
+                <div class="demo-user">👑 Creador: admin@mission.fit / 123456</div>
+                <div class="demo-user">📊 Admin: admin@gym.com / 123456</div>
+                <div class="demo-user">👤 Usuario: user@gym.com / 123456</div>
+            </div>
+
+            <form onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label>Email:</label>
+                    <input type="email" id="loginEmail" placeholder="tu@email.com" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Contraseña:</label>
+                    <input type="password" id="loginPassword" placeholder="Ingresa tu contraseña" required>
+                </div>
+
+                <button type="submit" class="btn-login">🔓 Ingresar</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- APP PAGE -->
+    <div id="appPage" class="app-wrapper" style="display:none;">
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">💪 Mission</div>
+                <div class="sidebar-subtitle">Fitness Management</div>
+            </div>
+
+            <div class="user-info">
+                <div class="user-info-row">
+                    <span class="user-info-label">Rol:</span>
+                    <span class="user-info-value" id="userRole">-</span>
+                </div>
+                <div class="user-info-row">
+                    <span class="user-info-label">Usuario:</span>
+                    <span class="user-info-value" id="userName">-</span>
+                </div>
+            </div>
+
+            <ul class="nav-menu" id="navMenu">
+                <!-- Se genera dinámicamente según el rol -->
+            </ul>
+
+            <div class="sidebar-footer">
+                <button class="btn-logout" onclick="handleLogout()">🚪 Cerrar Sesión</button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <div class="main-content">
+            <div class="header">
+                <div class="header-title" id="headerTitle">Bienvenido</div>
+                <div class="header-subtitle" id="headerSubtitle">Hoy es jueves, 15 de octubre de 2026</div>
+            </div>
+
+            <div class="content-area">
+                <!-- DASHBOARD VIEW -->
+                <div id="dashboardView" class="view">
+                    <div class="dashboard-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">👥 Clientes Totales</div>
+                            <div class="stat-value">156</div>
+                            <div class="stat-change">↑ 12 este mes</div>
+                        </div>
+
+                        <div class="stat-card success">
+                            <div class="stat-label">💰 Ingresos Hoy</div>
+                            <div class="stat-value">$2,450</div>
+                            <div class="stat-change">↑ $350 vs ayer</div>
+                        </div>
+
+                        <div class="stat-card info">
+                            <div class="stat-label">📍 Entradas Hoy</div>
+                            <div class="stat-value">28</div>
+                            <div class="stat-change">↑ 5 vs promedio</div>
+                        </div>
+
+                        <div class="stat-card warning">
+                            <div class="stat-label">⏰ Próx. Vencimiento</div>
+                            <div class="stat-value">8</div>
+                            <div class="stat-change">Membresias próx. 7 días</div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">📈</span> Ingresos Semanales</div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Día</th>
+                                    <th>Entradas</th>
+                                    <th>Ingresos</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Lunes</td>
+                                    <td>24</td>
+                                    <td>$2,100</td>
+                                    <td><span class="badge badge-success">Completo</span></td>
+                                </tr>
+                                <tr>
+                                    <td>Martes</td>
+                                    <td>31</td>
+                                    <td>$2,800</td>
+                                    <td><span class="badge badge-success">Completo</span></td>
+                                </tr>
+                                <tr>
+                                    <td>Miércoles</td>
+                                    <td>28</td>
+                                    <td>$2,450</td>
+                                    <td><span class="badge badge-success">Completo</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- CHECK-IN VIEW -->
+                <div id="checkinView" class="view" style="display:none;">
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">📱</span> Check-in de Clientes</div>
+                        <div class="form-row">
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label>Buscar Cliente por Nombre o Cédula:</label>
+                                <input type="text" placeholder="Ingresa nombre o cédula..." id="searchClient">
+                            </div>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary">📷 Escanear QR</button>
+                            <button class="btn btn-secondary">🔍 Buscar</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">💳</span> Procesar Pago</div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Plan de Membresía:</label>
+                                <select>
+                                    <option>Seleccionar plan...</option>
+                                    <option>Renovación Completa - $50</option>
+                                    <option>Pago Diario - $5</option>
+                                    <option>1 Semana - $30</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Método de Pago:</label>
+                                <select>
+                                    <option>Seleccionar método...</option>
+                                    <option>Efectivo</option>
+                                    <option>Tarjeta</option>
+                                    <option>Transfer (Yapi)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-success">✓ Confirmar Pago</button>
+                            <button class="btn btn-secondary">✕ Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CLIENTES VIEW -->
+                <div id="clientesView" class="view" style="display:none;">
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">👥</span> Directorio de Clientes</div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" onclick="showCreateClientModal()">➕ Nuevo Cliente</button>
+                            <button class="btn btn-secondary">🔍 Buscar</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Nombre</th>
+                                        <th>Cédula</th>
+                                        <th>Membresía</th>
+                                        <th>Estado</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Juan Pérez</td>
+                                        <td>8-123-456</td>
+                                        <td>Renovación Completa</td>
+                                        <td><span class="badge badge-success">Activo</span></td>
+                                        <td><button class="btn btn-secondary" style="padding:6px 12px;font-size:12px;">Editar</button></td>
+                                    </tr>
+                                    <tr>
+                                        <td>María García</td>
+                                        <td>8-234-567</td>
+                                        <td>Pago Diario</td>
+                                        <td><span class="badge badge-success">Activo</span></td>
+                                        <td><button class="btn btn-secondary" style="padding:6px 12px;font-size:12px;">Editar</button></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Carlos López</td>
+                                        <td>8-345-678</td>
+                                        <td>Renovación Completa</td>
+                                        <td><span class="badge badge-warning">Próx. Vencer</span></td>
+                                        <td><button class="btn btn-secondary" style="padding:6px 12px;font-size:12px;">Editar</button></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- INVENTARIO VIEW -->
+                <div id="inventarioView" class="view" style="display:none;">
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">📦</span> Inventario de Productos</div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary">➕ Nuevo Producto</button>
+                            <button class="btn btn-secondary">📊 Reportes</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="table-responsive">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Producto</th>
+                                        <th>Stock</th>
+                                        <th>Precio</th>
+                                        <th>Valor Total</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Agua Embotellada 500ml</td>
+                                        <td>125</td>
+                                        <td>$1.00</td>
+                                        <td>$125.00</td>
+                                        <td><span class="badge badge-success">Disponible</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Bebida Deportiva</td>
+                                        <td>45</td>
+                                        <td>$3.50</td>
+                                        <td>$157.50</td>
+                                        <td><span class="badge badge-success">Disponible</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Proteína en Polvo</td>
+                                        <td>8</td>
+                                        <td>$25.00</td>
+                                        <td>$200.00</td>
+                                        <td><span class="badge badge-warning">Bajo Stock</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- REPORTES VIEW -->
+                <div id="reportesView" class="view" style="display:none;">
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">📊</span> Reportes y Análisis</div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Período:</label>
+                                <select>
+                                    <option>Último Día</option>
+                                    <option>Última Semana</option>
+                                    <option>Último Mes</option>
+                                    <option>Últimas 3 Meses</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Tipo de Reporte:</label>
+                                <select>
+                                    <option>Ingresos</option>
+                                    <option>Clientes</option>
+                                    <option>Asistencia</option>
+                                    <option>Inventario</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary">📥 Descargar PDF</button>
+                            <button class="btn btn-secondary">📧 Enviar por Email</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Resumen Mensual</div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Métrica</th>
+                                    <th>Valor</th>
+                                    <th>Cambio</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Ingresos Totales</td>
+                                    <td>$34,200</td>
+                                    <td><span class="badge badge-success">↑ 12.5%</span></td>
+                                </tr>
+                                <tr>
+                                    <td>Nuevos Clientes</td>
+                                    <td>12</td>
+                                    <td><span class="badge badge-success">↑ 8.3%</span></td>
+                                </tr>
+                                <tr>
+                                    <td>Promedio Diario</td>
+                                    <td>$1,140</td>
+                                    <td><span class="badge badge-success">↑ 5.2%</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- CONFIGURACIÓN VIEW -->
+                <div id="configView" class="view" style="display:none;">
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">⚙️</span> Configuración del Gimnasio</div>
+                        <div class="form-row">
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label>Nombre del Gimnasio:</label>
+                                <input type="text" value="Mission Fit Panamá" placeholder="Nombre del gimnasio">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Email de Contacto:</label>
+                                <input type="email" value="contacto@missionfit.com" placeholder="email@gimnasio.com">
+                            </div>
+                            <div class="form-group">
+                                <label>Teléfono:</label>
+                                <input type="tel" value="+507 6789-0123" placeholder="+507 XXXX-XXXX">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>WhatsApp para Notificaciones:</label>
+                                <input type="tel" value="+507 6789-0123" placeholder="+507 XXXX-XXXX">
+                            </div>
+                            <div class="form-group">
+                                <label>Moneda:</label>
+                                <select>
+                                    <option>USD ($)</option>
+                                    <option>PAB (B/.)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="btn-group">
+                            <button class="btn btn-primary">💾 Guardar Cambios</button>
+                            <button class="btn btn-secondary">🔄 Restaurar Valores</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">👥</span> Gestión de Usuarios</div>
+                        <div class="btn-group">
+                            <button class="btn btn-primary" onclick="showCreateUserModal()">➕ Crear Usuario</button>
+                        </div>
+                        <table style="margin-top: 20px;">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Rol</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>admin@mission.fit</td>
+                                    <td><span class="badge badge-success">Creador</span></td>
+                                    <td>Activo</td>
+                                    <td><button class="btn btn-danger" style="padding:6px 12px;font-size:12px;">Eliminar</button></td>
+                                </tr>
+                                <tr>
+                                    <td>admin@gym.com</td>
+                                    <td><span class="badge badge-info">Administrador</span></td>
+                                    <td>Activo</td>
+                                    <td><button class="btn btn-danger" style="padding:6px 12px;font-size:12px;">Eliminar</button></td>
+                                </tr>
+                                <tr>
+                                    <td>user@gym.com</td>
+                                    <td><span class="badge badge-warning">Usuario</span></td>
+                                    <td>Activo</td>
+                                    <td><button class="btn btn-danger" style="padding:6px 12px;font-size:12px;">Eliminar</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: CREATE CLIENT -->
+    <div id="createClientModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal('createClientModal')">✕</button>
+            <div class="modal-header">➕ Crear Nuevo Cliente</div>
+            <div class="form-row">
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label>Nombre Completo:</label>
+                    <input type="text" placeholder="Nombre completo">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Cédula:</label>
+                    <input type="text" placeholder="8-123-456">
+                </div>
+                <div class="form-group">
+                    <label>Teléfono:</label>
+                    <input type="tel" placeholder="6789-0123">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label>Email:</label>
+                    <input type="email" placeholder="cliente@email.com">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label>Plan de Membresía:</label>
+                    <select>
+                        <option>Seleccionar plan...</option>
+                        <option>Renovación Completa - $50/mes</option>
+                        <option>Pago Diario - $5/día</option>
+                        <option>1 Semana - $30/semana</option>
+                    </select>
+                </div>
+            </div>
+            <div class="btn-group">
+                <button class="btn btn-primary" onclick="closeModal('createClientModal')">✓ Crear Cliente</button>
+                <button class="btn btn-secondary" onclick="closeModal('createClientModal')">✕ Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: CREATE USER -->
+    <div id="createUserModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal('createUserModal')">✕</button>
+            <div class="modal-header">➕ Crear Nuevo Usuario</div>
+            <div class="form-row">
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label>Email:</label>
+                    <input type="email" placeholder="usuario@email.com">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Contraseña:</label>
+                    <input type="password" placeholder="Contraseña segura">
+                </div>
+                <div class="form-group">
+                    <label>Confirmar Contraseña:</label>
+                    <input type="password" placeholder="Confirmar contraseña">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label>Rol:</label>
+                    <select>
+                        <option value="admin">👑 Administrador</option>
+                        <option value="user">👤 Usuario</option>
+                    </select>
+                </div>
+            </div>
+            <div class="btn-group">
+                <button class="btn btn-primary" onclick="closeModal('createUserModal')">✓ Crear Usuario</button>
+                <button class="btn btn-secondary" onclick="closeModal('createUserModal')">✕ Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // DATOS Y CONFIGURACIÓN
+        // ============================================
+
+        const USERS = {
+            'admin@mission.fit': { password: '123456', role: 'creator', name: 'Administrador' },
+            'admin@gym.com': { password: '123456', role: 'admin', name: 'Admin Gimnasio' },
+            'user@gym.com': { password: '123456', role: 'user', name: 'Usuario Recepción' }
+        };
+
+        const ROLES_CONFIG = {
+            creator: {
+                name: '👑 Creador',
+                menu: [
+                    { id: 'dashboard', icon: '📊', label: 'Dashboard', view: 'dashboardView' },
+                    { id: 'checkin', icon: '📱', label: 'Check-in', view: 'checkinView' },
+                    { id: 'clientes', icon: '👥', label: 'Clientes', view: 'clientesView' },
+                    { id: 'inventario', icon: '📦', label: 'Inventario', view: 'inventarioView' },
+                    { id: 'reportes', icon: '📊', label: 'Reportes', view: 'reportesView' },
+                    { id: 'config', icon: '⚙️', label: 'Configuración', view: 'configView' }
+                ]
+            },
+            admin: {
+                name: '📊 Administrador',
+                menu: [
+                    { id: 'dashboard', icon: '📊', label: 'Dashboard', view: 'dashboardView' },
+                    { id: 'checkin', icon: '📱', label: 'Check-in', view: 'checkinView' },
+                    { id: 'clientes', icon: '👥', label: 'Clientes', view: 'clientesView' },
+                    { id: 'inventario', icon: '📦', label: 'Inventario', view: 'inventarioView' },
+                    { id: 'reportes', icon: '📊', label: 'Reportes', view: 'reportesView' }
+                ]
+            },
+            user: {
+                name: '👤 Usuario',
+                menu: [
+                    { id: 'checkin', icon: '📱', label: 'Check-in', view: 'checkinView' },
+                    { id: 'clientes', icon: '👥', label: 'Clientes (Ver)', view: 'clientesView' }
+                ]
+            }
+        };
+
+        let currentUser = null;
+
+        // ============================================
+        // FUNCIONES DE AUTENTICACIÓN
+        // ============================================
+
+        function handleLogin(event) {
+            event.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            if (USERS[email] && USERS[email].password === password) {
+                currentUser = { email, ...USERS[email] };
+                localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                showApp();
+            } else {
+                alert('❌ Email o contraseña incorrectos');
+            }
+        }
+
+        function handleLogout() {
+            if (confirm('¿Cerrar sesión?')) {
+                currentUser = null;
+                localStorage.removeItem('currentUser');
+                location.reload();
+            }
+        }
+
+        function showApp() {
+            document.getElementById('loginPage').style.display = 'none';
+            document.getElementById('appPage').style.display = 'flex';
+            buildNav();
+            updateUserInfo();
+            showView('dashboard');
+        }
+
+        // ============================================
+        // CONSTRUIR NAVEGACIÓN
+        // ============================================
+
+        function buildNav() {
+            const navMenu = document.getElementById('navMenu');
+            navMenu.innerHTML = '';
+            const config = ROLES_CONFIG[currentUser.role];
+
+            config.menu.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'nav-item';
+                li.innerHTML = `<span class="nav-icon">${item.icon}</span><span>${item.label}</span>`;
+                li.onclick = () => showView(item.id);
+                li.id = `nav-${item.id}`;
+                navMenu.appendChild(li);
+            });
+        }
+
+        // ============================================
+        // GESTIÓN DE VISTAS
+        // ============================================
+
+        function showView(viewId) {
+            // Ocultar todas las vistas
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+
+            // Mapeo de vistas
+            const viewMap = {
+                dashboard: 'dashboardView',
+                checkin: 'checkinView',
+                clientes: 'clientesView',
+                inventario: 'inventarioView',
+                reportes: 'reportesView',
+                config: 'configView'
+            };
+
+            const viewEl = document.getElementById(viewMap[viewId]);
+            if (viewEl) {
+                viewEl.classList.add('active');
+            }
+
+            // Actualizar navegación activa
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            const activeNav = document.getElementById(`nav-${viewId}`);
+            if (activeNav) activeNav.classList.add('active');
+
+            // Actualizar header
+            updateHeader(viewId);
+        }
+
+        function updateHeader(viewId) {
+            const titles = {
+                dashboard: { title: '📊 Dashboard', subtitle: 'Resumen general del gimnasio' },
+                checkin: { title: '📱 Check-in de Clientes', subtitle: 'Registra entradas y procesa pagos' },
+                clientes: { title: '👥 Directorio de Clientes', subtitle: 'Gestiona los clientes del gimnasio' },
+                inventario: { title: '📦 Inventario', subtitle: 'Controla tu stock de productos' },
+                reportes: { title: '📊 Reportes', subtitle: 'Análisis y estadísticas' },
+                config: { title: '⚙️ Configuración', subtitle: 'Ajustes del gimnasio y usuarios' }
+            };
+
+            const info = titles[viewId] || { title: 'Bienvenido', subtitle: '' };
+            document.getElementById('headerTitle').textContent = info.title;
+            document.getElementById('headerSubtitle').textContent = info.subtitle;
+        }
+
+        function updateUserInfo() {
+            document.getElementById('userName').textContent = currentUser.name;
+            document.getElementById('userRole').textContent = ROLES_CONFIG[currentUser.role].name;
+        }
+
+        // ============================================
+        // MODALES
+        // ============================================
+
+        function showCreateClientModal() {
+            document.getElementById('createClientModal').classList.add('active');
+        }
+
+        function showCreateUserModal() {
+            document.getElementById('createUserModal').classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        // ============================================
+        // INICIALIZACIÓN
+        // ============================================
+
+        window.addEventListener('load', () => {
+            const stored = localStorage.getItem('currentUser');
+            if (stored) {
+                try {
+                    currentUser = JSON.parse(stored);
+                    showApp();
+                } catch (e) {
+                    localStorage.removeItem('currentUser');
+                }
+            }
+        });
+
+        // Cerrar modales al hacer click fuera
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal')) {
+                e.target.classList.remove('active');
+            }
+        });
+    </script>
+</body>
+</html>
