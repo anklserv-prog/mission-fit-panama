@@ -1,0 +1,14 @@
+{
+  "name": "mission-fit-panama",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Mission Fit - gestión de gimnasio (Cloudflare Pages + D1)",
+  "scripts": {
+    "dev": "wrangler pages dev . --d1=DB --compatibility-date=2026-01-01 --port 8788",
+    "test": "node tests/smoke.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.152.0"
+  }
+}

@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Mission Fit - Gestión de Gimnasio</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap">
+    <link rel="stylesheet" href="/app.css">
+    <link rel="stylesheet" href="/app-extra.css">
+</head>
+<body>
+    <!-- PRIMER ARRANQUE -->
+    <div id="setupPage" class="login-container" style="display:none;">
+        <div class="login-box">
+            <div class="login-header">
+                <h1>💪 Mission Fit</h1>
+                <p>Configura el usuario creador del sistema</p>
+            </div>
+            <form id="setupForm">
+                <div class="form-group"><label>Nombre:</label><input type="text" name="name" required></div>
+                <div class="form-group"><label>Email:</label><input type="email" name="email" required></div>
+                <div class="form-group"><label>Contraseña (mínimo 8):</label><input type="password" name="password" minlength="8" required></div>
+                <div class="error" id="setupError"></div>
+                <button type="submit" class="btn-login">Crear usuario creador</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- LOGIN -->
+    <div id="loginPage" class="login-container" style="display:none;">
+        <div class="login-box">
+            <div class="login-header">
+                <h1>💪 Mission Fit</h1>
+                <p>Sistema de Gestión de Gimnasio</p>
+            </div>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label>Email:</label>
+                    <input type="email" id="loginEmail" placeholder="tu@email.com" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label>Contraseña:</label>
+                    <input type="password" id="loginPassword" placeholder="Ingresa tu contraseña" required autocomplete="current-password">
+                </div>
+                <div class="error" id="loginError"></div>
+                <button type="submit" class="btn-login">🔓 Ingresar</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- APP -->
+    <div id="appPage" class="app-wrapper" style="display:none;">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">💪 Mission</div>
+                <div class="sidebar-subtitle">Fitness Management</div>
+            </div>
+            <div class="user-info">
+                <div class="user-info-row"><span class="user-info-label">Rol:</span><span class="user-info-value" id="userRole">-</span></div>
+                <div class="user-info-row"><span class="user-info-label">Usuario:</span><span class="user-info-value" id="userName">-</span></div>
+            </div>
+            <ul class="nav-menu" id="navMenu"></ul>
+            <div class="sidebar-footer">
+                <button class="btn-logout" id="logoutBtn">🚪 Cerrar Sesión</button>
+            </div>
+        </aside>
+
+        <div class="main-content">
+            <div class="header">
+                <div class="header-title" id="headerTitle">Bienvenido</div>
+                <div class="header-subtitle" id="headerSubtitle"></div>
+            </div>
+
+            <div class="content-area">
+                <!-- DASHBOARD -->
+                <div id="dashboardView" class="view">
+                    <div class="dashboard-grid">
+                        <div class="stat-card"><div class="stat-label">👥 Clientes activos</div><div class="stat-value" id="kClients">–</div></div>
+                        <div class="stat-card success"><div class="stat-label">💰 Ingresos hoy</div><div class="stat-value" id="kIncome">–</div></div>
+                        <div class="stat-card info"><div class="stat-label">📍 Entradas hoy</div><div class="stat-value" id="kEntries">–</div></div>
+                        <div class="stat-card warning"><div class="stat-label">⏰ Por vencer (7 días)</div><div class="stat-value" id="kExpiring">–</div></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">📈</span> Últimos 7 días</div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead><tr><th>Día</th><th>Entradas</th><th>Ingresos</th></tr></thead>
+                                <tbody id="weekBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">⏰</span> Próximos vencimientos</div>
+                        <div id="expiringList"></div>
+                    </div>
+                </div>
+
+                <!-- CHECK-IN -->
+                <div id="checkinView" class="view">
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">🔍</span> Buscar cliente</div>
+                        <input type="search" id="ciSearch" class="wide-input" placeholder="Nombre, cédula o teléfono...">
+                        <div id="ciResults" class="results"></div>
+                    </div>
+                    <div class="card" id="ciDetail" style="display:none;"></div>
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">🏋️</span> Dentro del gimnasio ahora</div>
+                        <div id="openEntries"></div>
+                    </div>
+                </div>
+
+                <!-- CLIENTES -->
+                <div id="clientesView" class="view">
+                    <div class="card">
+                        <div class="toolbar">
+                            <input type="search" id="clientSearch" class="wide-input" placeholder="Buscar por nombre, cédula o teléfono...">
+                            <button class="btn btn-primary" id="newClientBtn">➕ Nuevo Cliente</button>
+                        </div>
+                        <div class="table-responsive" style="margin-top:16px;">
+                            <table>
+                                <thead>
+                                    <tr><th>Nombre</th><th>Cédula</th><th>Teléfono</th><th>Membresía</th><th>Vence</th><th>Estado</th><th></th></tr>
+                                </thead>
+                                <tbody id="clientsBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- INVENTARIO Y VENTAS -->
+                <div id="inventarioView" class="view">
+                    <div class="card">
+                        <div class="toolbar">
+                            <div class="card-title" style="margin:0;"><span class="card-title-icon">📦</span> Productos</div>
+                            <button class="btn btn-primary" id="newProductBtn" style="display:none;">➕ Nuevo Producto</button>
+                        </div>
+                        <div class="table-responsive" style="margin-top:16px;">
+                            <table>
+                                <thead>
+                                    <tr><th>Producto</th><th>Stock</th><th>Precio</th><th>Estado</th><th></th></tr>
+                                </thead>
+                                <tbody id="productsBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">🧾</span> Venta rápida</div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Producto:</label>
+                                <select id="posProduct"></select>
+                            </div>
+                            <div class="form-group">
+                                <label>Cantidad:</label>
+                                <input type="number" id="posQty" min="1" value="1">
+                            </div>
+                        </div>
+                        <div class="btn-group" style="margin-top:0;"><button class="btn btn-secondary" id="posAdd">➕ Agregar</button></div>
+                        <div class="table-responsive" style="margin-top:16px;">
+                            <table>
+                                <thead><tr><th>Producto</th><th>Cant.</th><th>Subtotal</th><th></th></tr></thead>
+                                <tbody id="cartBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="form-row" style="margin-top:16px;">
+                            <div class="form-group">
+                                <label>Método de pago:</label>
+                                <select id="posMethod">
+                                    <option value="efectivo">Efectivo</option>
+                                    <option value="tarjeta">Tarjeta</option>
+                                    <option value="yapi">Yapi</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Total:</label>
+                                <div class="total-box" id="cartTotal">$0.00</div>
+                            </div>
+                        </div>
+                        <div class="btn-group"><button class="btn btn-success" id="posCharge">✓ Cobrar venta</button></div>
+                    </div>
+                </div>
+
+                <!-- REPORTES -->
+                <div id="reportesView" class="view">
+                    <div class="card">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Período:</label>
+                                <select id="repPeriod">
+                                    <option value="today">Hoy</option>
+                                    <option value="week">Últimos 7 días</option>
+                                    <option value="month">Mes actual</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="btn-group"><button class="btn btn-primary" id="repLoad">📈 Actualizar</button></div>
+                    </div>
+                    <div class="dashboard-grid">
+                        <div class="stat-card success"><div class="stat-label">Ingresos totales</div><div class="stat-value" id="rIncome">–</div></div>
+                        <div class="stat-card"><div class="stat-label">Membresías</div><div class="stat-value" id="rMemberships">–</div></div>
+                        <div class="stat-card info"><div class="stat-label">Entradas</div><div class="stat-value" id="rEntries">–</div></div>
+                        <div class="stat-card"><div class="stat-label">Clientes únicos</div><div class="stat-value" id="rUnique">–</div></div>
+                        <div class="stat-card"><div class="stat-label">Clientes nuevos</div><div class="stat-value" id="rNew">–</div></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Por día</div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead><tr><th>Día</th><th>Entradas</th><th>Ingresos</th></tr></thead>
+                                <tbody id="repDaysBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Ingresos por método</div>
+                        <table>
+                            <thead><tr><th>Método</th><th>Monto</th></tr></thead>
+                            <tbody id="repMethodBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Productos vendidos</div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead><tr><th>Producto</th><th>Cantidad</th><th>Total</th></tr></thead>
+                                <tbody id="repProductsBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CONFIGURACIÓN -->
+                <div id="configView" class="view">
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">⚙️</span> Datos del gimnasio</div>
+                        <form id="settingsForm">
+                            <div class="form-row">
+                                <div class="form-group" style="grid-column:1 / -1;">
+                                    <label>Nombre del gimnasio:</label>
+                                    <input type="text" name="gym_name">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group"><label>Email de contacto:</label><input type="email" name="contact_email"></div>
+                                <div class="form-group"><label>Teléfono:</label><input type="tel" name="phone"></div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group"><label>WhatsApp para notificaciones:</label><input type="tel" name="whatsapp"></div>
+                                <div class="form-group"><label>Moneda:</label>
+                                    <select name="currency"><option value="USD">USD ($)</option><option value="PAB">PAB (B/.)</option></select>
+                                </div>
+                            </div>
+                            <div class="btn-group"><button class="btn btn-primary" type="submit">💾 Guardar cambios</button></div>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">💳</span> Planes y precios</div>
+                        <div class="table-responsive">
+                            <table>
+                                <thead><tr><th>Plan</th><th>Duración</th><th>Precio</th><th></th></tr></thead>
+                                <tbody id="plansBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="toolbar">
+                            <div class="card-title" style="margin:0;"><span class="card-title-icon">👥</span> Usuarios</div>
+                            <button class="btn btn-primary" id="newUserBtn">➕ Crear Usuario</button>
+                        </div>
+                        <div class="table-responsive" style="margin-top:16px;">
+                            <table>
+                                <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th></th></tr></thead>
+                                <tbody id="usersBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL GENÉRICO -->
+    <div id="modal" class="modal">
+        <div class="modal-content" id="modalBox"></div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
