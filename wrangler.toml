@@ -1,0 +1,8 @@
+name = "mission-fit-panama"
+compatibility_date = "2026-01-01"
+pages_build_output_dir = "."
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mission-fit-panama"
+database_id = "e87c4d73-efd5-4988-b16b-132273fceca6"
