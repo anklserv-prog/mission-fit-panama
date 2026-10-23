@@ -3,7 +3,7 @@ import { ensureDb } from '../../lib/schema.js';
 import {
   HttpError, json, fail, readBody, newId, hashPassword, verifyPassword, sha256Hex, randomToken,
   todayPanama, addDays, daysBetween, membershipStatus, ROLE_RANK,
-  requireString, optString, requireNumber, requireInt, requireMethod, requireDay, isUniqueError,
+  requireString, optString, requireNumber, requireInt, requireMethod, requireDay, isUniqueError, requireIcon,
 } from '../../lib/util.js';
 
 const SESSION_DAYS = 30;
@@ -153,6 +153,42 @@ route('POST', /^users$/, 'admin', async ({ db, user, body }) => {
   return json({ user: await createUser(db, body) }, 201);
 });
 
+// Editar usuario: el creador puede editar a cualquiera; el administrador solo a recepción.
+route('PUT', /^users\/([^/]+)$/, 'admin', async ({ db, user, args, body }) => {
+  const id = args[0];
+  const target = await db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
+  if (!target) throw new HttpError(404, 'Usuario no encontrado');
+  if (user.role !== 'creator' && target.role !== 'user') {
+    throw new HttpError(403, 'Solo el creador puede editar a administradores');
+  }
+
+  const allowed = user.role === 'creator' ? ['creator', 'admin', 'user'] : ['admin', 'user'];
+  const role = body.role !== undefined ? body.role : target.role;
+  if (!allowed.includes(role)) throw new HttpError(403, 'No puedes asignar ese rol');
+
+  const active = body.active !== undefined ? (body.active ? 1 : 0) : target.active;
+  if (id === user.id && active === 0) throw new HttpError(400, 'No puedes desactivar tu propio usuario');
+
+  const name = body.name !== undefined ? requireString(body.name, 'Nombre', 120) : target.name;
+  let hash = target.password_hash;
+  let salt = target.salt;
+  if (typeof body.password === 'string' && body.password.length > 0) {
+    if (body.password.length < 8) throw new HttpError(400, 'La contraseña debe tener al menos 8 caracteres');
+    ({ hash, salt } = await hashPassword(body.password));
+  }
+
+  const stmts = [
+    db.prepare('UPDATE users SET name = ?, role = ?, active = ?, password_hash = ?, salt = ? WHERE id = ?')
+      .bind(name, role, active, hash, salt, id),
+  ];
+  // Si se cambia la contraseña o se desactiva, se cierran las sesiones abiertas de ese usuario.
+  if (active === 0 || hash !== target.password_hash) {
+    stmts.push(db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(id));
+  }
+  await db.batch(stmts);
+  return json({ user: { id, name, role, active } });
+});
+
 route('DELETE', /^users\/([^/]+)$/, 'creator', async ({ db, user, args }) => {
   const id = args[0];
   if (id === user.id) throw new HttpError(400, 'No puedes eliminar tu propio usuario');
@@ -253,7 +289,7 @@ route('GET', /^clients\/([^/]+)$/, 'user', async ({ db, args }) => {
   ]);
 
   return json({
-    client: withStatus(client, latest, today),
+    client: { ...withStatus(client, latest, today), balance: await clientBalance(db, id) },
     memberships: memberships.results,
     payments: payments.results,
     entries: entries.results,
@@ -411,14 +447,17 @@ function productFields(body) {
     price: requireNumber(body.price, 'Precio'),
     stock: requireInt(body.stock ?? 0, 'Stock'),
     min_stock: requireInt(body.min_stock ?? 5, 'Stock mínimo'),
+    icon: requireIcon(body.icon),
+    category: optString(body.category, 40),
   };
 }
 
 route('POST', /^products$/, 'admin', async ({ db, body }) => {
   const f = productFields(body);
   const id = newId();
-  await db.prepare('INSERT INTO products (id, name, price, stock, min_stock) VALUES (?, ?, ?, ?, ?)')
-    .bind(id, f.name, f.price, f.stock, f.min_stock).run();
+  await db.prepare(
+    'INSERT INTO products (id, name, price, stock, min_stock, icon, category) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  ).bind(id, f.name, f.price, f.stock, f.min_stock, f.icon, f.category).run();
   return json({ product: { id, ...f } }, 201);
 });
 
@@ -428,9 +467,9 @@ route('PUT', /^products\/([^/]+)$/, 'admin', async ({ db, args, body }) => {
   if (!existing) throw new HttpError(404, 'Producto no encontrado');
   const f = productFields(body);
   // El stock se modifica con reabastecimiento o ventas, no desde la edición del producto.
-  await db.prepare('UPDATE products SET name = ?, price = ?, min_stock = ? WHERE id = ?')
-    .bind(f.name, f.price, f.min_stock, id).run();
-  return json({ product: { id, name: f.name, price: f.price, min_stock: f.min_stock } });
+  await db.prepare('UPDATE products SET name = ?, price = ?, min_stock = ?, icon = ?, category = ? WHERE id = ?')
+    .bind(f.name, f.price, f.min_stock, f.icon, f.category, id).run();
+  return json({ product: { id, name: f.name, price: f.price, min_stock: f.min_stock, icon: f.icon, category: f.category } });
 });
 
 route('POST', /^products\/([^/]+)\/restock$/, 'admin', async ({ db, user, args, body }) => {
@@ -450,8 +489,11 @@ route('POST', /^products\/([^/]+)\/restock$/, 'admin', async ({ db, user, args, 
 route('POST', /^sales$/, 'user', async ({ db, user, body }) => {
   const items = Array.isArray(body.items) ? body.items : [];
   if (items.length === 0) throw new HttpError(400, 'Agrega al menos un producto');
-  const method = requireMethod(body.method);
+  // "cuenta" no es un medio de pago: la venta queda cargada al saldo del cliente.
+  const onAccount = body.method === 'cuenta';
+  const method = onAccount ? 'efectivo' : requireMethod(body.method);
   const clientId = optString(body.client_id, 80);
+  if (onAccount && !clientId) throw new HttpError(400, 'Para cargar a cuenta debes seleccionar un cliente');
   if (clientId) {
     const c = await db.prepare('SELECT id FROM clients WHERE id = ? AND active = 1').bind(clientId).first();
     if (!c) throw new HttpError(404, 'Cliente no encontrado');
@@ -478,9 +520,17 @@ route('POST', /^sales$/, 'user', async ({ db, user, body }) => {
   const today = todayPanama();
   const saleId = newId();
   const stmts = [
-    db.prepare('INSERT INTO sales (id, client_id, total, method, day, created_by) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(saleId, clientId, total, method, today, user.id),
+    db.prepare(
+      'INSERT INTO sales (id, client_id, total, method, day, created_by, on_account) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).bind(saleId, clientId, total, method, today, user.id, onAccount ? 1 : 0),
   ];
+  if (onAccount) {
+    stmts.push(
+      db.prepare(
+        "INSERT INTO client_ledger (id, client_id, kind, amount, sale_id, note, day, created_by) VALUES (?, ?, 'cargo', ?, ?, 'Venta de Market', ?, ?)",
+      ).bind(newId(), clientId, total, saleId, today, user.id),
+    );
+  }
   for (const { product: p, qty } of lines) {
     stmts.push(
       db.prepare('INSERT INTO sale_items (id, sale_id, product_id, qty, unit_price) VALUES (?, ?, ?, ?, ?)')
@@ -498,11 +548,50 @@ route('POST', /^sales$/, 'user', async ({ db, user, body }) => {
     sale: {
       id: saleId,
       total,
-      method,
+      method: onAccount ? 'cuenta' : method,
+      on_account: onAccount,
       day: today,
       lines: lines.map((l) => ({ name: l.product.name, qty: l.qty, subtotal: l.subtotal })),
     },
   }, 201);
+});
+
+// ---------------------------------------------------------------------------
+// Cuenta del cliente (cargos por ventas y abonos)
+// ---------------------------------------------------------------------------
+
+async function clientBalance(db, clientId) {
+  const row = await db.prepare(
+    `SELECT COALESCE(SUM(CASE WHEN kind = 'cargo' THEN amount ELSE 0 END), 0)
+          - COALESCE(SUM(CASE WHEN kind = 'abono' THEN amount ELSE 0 END), 0) AS balance
+       FROM client_ledger WHERE client_id = ?`,
+  ).bind(clientId).first();
+  return Math.round((row?.balance ?? 0) * 100) / 100;
+}
+
+route('GET', /^clients\/([^/]+)\/ledger$/, 'user', async ({ db, args }) => {
+  const id = args[0];
+  const client = await db.prepare('SELECT id FROM clients WHERE id = ? AND active = 1').bind(id).first();
+  if (!client) throw new HttpError(404, 'Cliente no encontrado');
+  const { results } = await db.prepare(
+    `SELECT id, kind, amount, method, note, day, created_at FROM client_ledger
+      WHERE client_id = ? ORDER BY created_at DESC LIMIT 100`,
+  ).bind(id).all();
+  return json({ balance: await clientBalance(db, id), movements: results });
+});
+
+route('POST', /^clients\/([^/]+)\/abonos$/, 'user', async ({ db, user, args, body }) => {
+  const id = args[0];
+  const client = await db.prepare('SELECT id FROM clients WHERE id = ? AND active = 1').bind(id).first();
+  if (!client) throw new HttpError(404, 'Cliente no encontrado');
+  const amount = requireNumber(body.amount, 'Monto', 0.01);
+  const method = requireMethod(body.method);
+  const balance = await clientBalance(db, id);
+  if (amount > balance + 0.001) throw new HttpError(400, `El abono supera el saldo pendiente ($${balance.toFixed(2)})`);
+  await db.prepare(
+    "INSERT INTO client_ledger (id, client_id, kind, amount, method, note, day, created_by) VALUES (?, ?, 'abono', ?, ?, 'Abono a cuenta', ?, ?)",
+  ).bind(newId(), id, amount, method, todayPanama(), user.id).run();
+  return json({ balance: await clientBalance(db, id) }, 201);
 });
 
 // ---------------------------------------------------------------------------
@@ -513,25 +602,32 @@ route('GET', /^dashboard$/, 'user', async ({ db }) => {
   const today = todayPanama();
   const weekStart = addDays(today, -6);
 
-  const [clients, payDays, saleDays, entryDays] = await db.batch([
+  const [clients, payDays, saleDays, entryDays, abonoDays] = await db.batch([
     db.prepare('SELECT COUNT(*) AS n FROM clients WHERE active = 1'),
     db.prepare('SELECT day, SUM(amount) AS total FROM payments WHERE day BETWEEN ? AND ? GROUP BY day')
       .bind(weekStart, today),
-    db.prepare('SELECT day, SUM(total) AS total FROM sales WHERE day BETWEEN ? AND ? GROUP BY day')
+    db.prepare('SELECT day, SUM(total) AS total FROM sales WHERE day BETWEEN ? AND ? AND on_account = 0 GROUP BY day')
       .bind(weekStart, today),
     db.prepare('SELECT day, COUNT(*) AS n FROM entries WHERE day BETWEEN ? AND ? GROUP BY day')
+      .bind(weekStart, today),
+    db.prepare("SELECT day, SUM(amount) AS total FROM client_ledger WHERE kind = 'abono' AND day BETWEEN ? AND ? GROUP BY day")
       .bind(weekStart, today),
   ]);
 
   const sumBy = (res) => new Map(res.results.map((r) => [r.day, r.total ?? r.n]));
   const pay = sumBy(payDays);
   const sale = sumBy(saleDays);
+  const abonos = sumBy(abonoDays);
   const entries = new Map(entryDays.results.map((r) => [r.day, r.n]));
 
   const week = [];
   for (let i = 0; i < 7; i++) {
     const day = addDays(weekStart, i);
-    week.push({ day, entries: entries.get(day) || 0, income: (pay.get(day) || 0) + (sale.get(day) || 0) });
+    week.push({
+      day,
+      entries: entries.get(day) || 0,
+      income: (pay.get(day) || 0) + (sale.get(day) || 0) + (abonos.get(day) || 0),
+    });
   }
 
   const latest = await latestMemberships(db);
@@ -569,14 +665,15 @@ route('GET', /^reports\/summary$/, 'admin', async ({ db, url }) => {
   const to = checkDay(url.searchParams.get('to'), today);
   if (from > to) throw new HttpError(400, 'La fecha inicial es posterior a la final');
 
-  const [payRows, saleRows, entryRows, newClients, productRows, membershipCount] = await db.batch([
+  const [payRows, saleRows, entryRows, newClients, productRows, membershipCount, abonoRows, onAccountRow, pendingRow] = await db.batch([
     db.prepare(
       `SELECT day, method, SUM(amount) AS total, COUNT(*) AS n FROM payments
         WHERE day BETWEEN ? AND ? GROUP BY day, method`,
     ).bind(from, to),
+    // Las ventas a cuenta no son ingreso todavía: se cuentan cuando el cliente abona.
     db.prepare(
       `SELECT day, method, SUM(total) AS total, COUNT(*) AS n FROM sales
-        WHERE day BETWEEN ? AND ? GROUP BY day, method`,
+        WHERE day BETWEEN ? AND ? AND on_account = 0 GROUP BY day, method`,
     ).bind(from, to),
     db.prepare(
       `SELECT day, COUNT(*) AS n, COUNT(DISTINCT client_id) AS unique_clients FROM entries
@@ -595,6 +692,18 @@ route('GET', /^reports\/summary$/, 'admin', async ({ db, url }) => {
     ).bind(from, to),
     db.prepare('SELECT COUNT(*) AS n FROM payments WHERE membership_id IS NOT NULL AND day BETWEEN ? AND ?')
       .bind(from, to),
+    db.prepare(
+      `SELECT day, method, SUM(amount) AS total, COUNT(*) AS n FROM client_ledger
+        WHERE kind = 'abono' AND day BETWEEN ? AND ? GROUP BY day, method`,
+    ).bind(from, to),
+    db.prepare(
+      'SELECT COALESCE(SUM(total), 0) AS total, COUNT(*) AS n FROM sales WHERE on_account = 1 AND day BETWEEN ? AND ?',
+    ).bind(from, to),
+    db.prepare(
+      `SELECT COALESCE(SUM(CASE WHEN kind = 'cargo' THEN amount ELSE 0 END), 0)
+            - COALESCE(SUM(CASE WHEN kind = 'abono' THEN amount ELSE 0 END), 0) AS total
+         FROM client_ledger`,
+    ),
   ]);
 
   const byDay = new Map();
@@ -616,6 +725,12 @@ route('GET', /^reports\/summary$/, 'admin', async ({ db, url }) => {
     byMethod[r.method] += r.total;
     salesIncome += r.total;
   }
+  let abonosIncome = 0;
+  for (const r of abonoRows.results) {
+    dayRow(r.day).income += r.total;
+    byMethod[r.method] += r.total;
+    abonosIncome += r.total;
+  }
   let entriesTotal = 0;
   for (const r of entryRows.results) {
     const d = dayRow(r.day);
@@ -632,9 +747,12 @@ route('GET', /^reports\/summary$/, 'admin', async ({ db, url }) => {
   return json({
     from,
     to,
-    income_total: membershipIncome + salesIncome,
+    income_total: membershipIncome + salesIncome + abonosIncome,
     income_memberships: membershipIncome,
     income_sales: salesIncome,
+    income_abonos: abonosIncome,
+    charged_to_accounts: Math.round(Number(onAccountRow.results[0].total || 0) * 100) / 100,
+    accounts_pending: Math.round(Number(pendingRow.results[0].total || 0) * 100) / 100,
     by_method: byMethod,
     entries_total: entriesTotal,
     unique_clients: uniqueRows.n,
