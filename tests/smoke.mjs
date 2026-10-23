@@ -201,5 +201,50 @@ check('ruta inexistente devuelve 404', notFound.status === 404);
 const wrongMethod = await call('DELETE', 'status', { token: creator });
 check('método no permitido devuelve 405', wrongMethod.status === 405);
 
+// 9. Market: iconos, categorías, cuenta del cliente y edición de usuarios
+console.log('\n9. Market, cuenta del cliente y usuarios');
+const badIcon = await call('POST', 'products', { token: adminToken, body: { name: 'Icono malo', price: 1, icon: '🦄' } });
+check('icono fuera de la lista rechazado', badIcon.status === 400, `status ${badIcon.status}`);
+const iconProd = await call('POST', 'products', { token: adminToken, body: { name: `Jugo ${suffix}`, price: 1.5, stock: 6, min_stock: 2, icon: '🧃', category: 'Bebidas' } });
+check('producto con icono y categoría', iconProd.status === 201 && iconProd.data.product.icon === '🧃' && iconProd.data.product.category === 'Bebidas', JSON.stringify(iconProd.data));
+const jid = iconProd.data.product.id;
+
+const noClientAcc = await call('POST', 'sales', { token: userToken, body: { items: [{ product_id: jid, qty: 1 }], method: 'cuenta' } });
+check('cargar a cuenta sin cliente rechazado', noClientAcc.status === 400, `status ${noClientAcc.status}`);
+
+const acc = await call('POST', 'sales', { token: userToken, body: { items: [{ product_id: jid, qty: 2 }], method: 'cuenta', client_id: clientId } });
+check('venta a cuenta registrada', acc.status === 201 && acc.data.sale.on_account === true && acc.data.sale.method === 'cuenta', JSON.stringify(acc.data));
+
+const led1 = await call('GET', `clients/${clientId}/ledger`, { token: userToken });
+check('saldo del cliente tras la venta a cuenta', led1.data.balance === 3, JSON.stringify(led1.data));
+check('movimiento de cargo en el libro', led1.data.movements?.some((m) => m.kind === 'cargo' && m.amount === 3));
+
+const overAbono = await call('POST', `clients/${clientId}/abonos`, { token: userToken, body: { amount: 5, method: 'efectivo' } });
+check('abono mayor al saldo rechazado', overAbono.status === 400, `status ${overAbono.status}`);
+
+const abono = await call('POST', `clients/${clientId}/abonos`, { token: userToken, body: { amount: 1.5, method: 'tarjeta' } });
+check('abono parcial registrado', abono.status === 201 && abono.data.balance === 1.5, JSON.stringify(abono.data));
+
+const detail = await call('GET', `clients/${clientId}`, { token: userToken });
+check('ficha del cliente muestra saldo', detail.data.client?.balance === 1.5);
+
+const repAcc = await call('GET', `reports/summary?from=${today}&to=${today}`, { token: adminToken });
+check('reporte incluye abonos cobrados', repAcc.data.income_abonos >= 1.5, JSON.stringify(repAcc.data));
+check('reporte incluye cargado a cuentas', repAcc.data.charged_to_accounts >= 3);
+check('reporte incluye saldo por cobrar', repAcc.data.accounts_pending >= 1.5);
+
+const editUser = await call('PUT', `users/${(await call('GET', 'users', { token: creator })).data.users.find((x) => x.email === userEmail).id}`, { token: adminToken, body: { name: 'Recepción Editada' } });
+check('admin edita nombre de recepción', editUser.status === 200, JSON.stringify(editUser.data));
+const editAdmin = await call('PUT', `users/${(await call('GET', 'users', { token: creator })).data.users.find((x) => x.email === adminEmail).id}`, { token: adminToken, body: { name: 'Nope' } });
+check('admin no puede editar a otro administrador', editAdmin.status === 403, `status ${editAdmin.status}`);
+const shortPass = await call('PUT', `users/${(await call('GET', 'users', { token: creator })).data.users.find((x) => x.email === userEmail).id}`, { token: creator, body: { password: 'corta' } });
+check('contraseña corta al editar rechazada', shortPass.status === 400);
+
+const recId = (await call('GET', 'users', { token: creator })).data.users.find((x) => x.email === userEmail).id;
+const deact = await call('PUT', `users/${recId}`, { token: creator, body: { active: false } });
+check('creador desactiva recepción', deact.status === 200, JSON.stringify(deact.data));
+const oldSession = await call('GET', 'clients', { token: userToken });
+check('sesión de usuario desactivado se cierra', oldSession.status === 401, `status ${oldSession.status}`);
+
 console.log(`\nResultado: ${passes} pasaron, ${failures} fallaron`);
 process.exit(failures ? 1 : 0);
