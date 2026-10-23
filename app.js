@@ -5,19 +5,25 @@
   const TOKEN_KEY = 'mf_token';
   const RANK = { user: 1, admin: 2, creator: 3 };
   const ROLE_LABEL = { creator: '👑 Creador', admin: '📊 Administrador', user: '👤 Recepción' };
-  const METHOD_LABEL = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', yapi: 'Yapi' };
+  const METHOD_LABEL = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', yapi: 'Yapi', cuenta: 'Cuenta' };
   const STATUS = {
     activa: ['Activa', 'badge-success'],
     por_vencer: ['Por vencer', 'badge-warning'],
     vencida: ['Vencida', 'badge-danger'],
     sin_membresia: ['Sin membresía', 'badge-muted'],
   };
+  // Debe coincidir con PRODUCT_ICONS de lib/util.js (la API valida contra esa lista).
+  const PRODUCT_ICONS = [
+    '💧', '🥤', '🧃', '☕', '🍵', '🧋', '🥛', '🍺', '🍷', '🍹',
+    '🍫', '🍪', '🥜', '🍿', '🍟', '🥪', '🍌', '🍎', '🍊', '🥗',
+    '🍗', '🍝', '🥤', '🧊', '🏋️', '🧴', '👕', '🧢', '🎽', '📦',
+  ];
   const MENU = [
     { id: 'dashboard', icon: '📊', label: 'Dashboard', min: 'admin', title: ['📊 Dashboard', 'Resumen general del gimnasio'] },
     { id: 'checkin', icon: '📱', label: 'Check-in', min: 'user', title: ['📱 Check-in', 'Registra entradas y renovaciones'] },
-    { id: 'clientes', icon: '👥', label: 'Clientes', min: 'user', title: ['👥 Clientes', 'Directorio y estado de membresías'] },
-    { id: 'inventario', icon: '📦', label: 'Inventario', min: 'user', title: ['📦 Inventario y ventas', 'Productos, stock y venta rápida'] },
-    { id: 'reportes', icon: '📈', label: 'Reportes', min: 'admin', title: ['📈 Reportes', 'Ingresos, entradas y ventas'] },
+    { id: 'clientes', icon: '👥', label: 'Clientes', min: 'user', title: ['👥 Clientes', 'Directorio, estado de membresías y cuenta'] },
+    { id: 'inventario', icon: '🛒', label: 'Market', min: 'user', title: ['🛒 Market', 'Productos, venta rápida e inventario'] },
+    { id: 'reportes', icon: '📈', label: 'Reportes', min: 'admin', title: ['📈 Reportes', 'Ingresos, entradas, ventas y cuentas'] },
     { id: 'config', icon: '⚙️', label: 'Configuración', min: 'admin', title: ['⚙️ Configuración', 'Datos del gimnasio, planes y usuarios'] },
   ];
 
@@ -45,11 +51,16 @@
     timeZone: 'America/Panama', hour: '2-digit', minute: '2-digit',
   });
   const can = (min) => !!me && RANK[me.role] >= RANK[min];
+  const categoryOf = (p) => p.category || 'General';
 
   let me = null;
   let plans = [];
   let products = [];
+  let users = [];
   let cart = [];
+  let posClient = null; // { id, full_name, balance } o null (venta de mostrador)
+  let marketCat = 'Todos';
+  let marketSearch = '';
   let currentView = 'dashboard';
   let openTimer = null;
   let searchTimer = null;
@@ -111,6 +122,7 @@
     return Object.fromEntries(new FormData(form).entries());
   }
   function setBusy(btn, busy, label) {
+    if (!btn) return;
     btn.disabled = busy;
     if (busy) { btn.dataset.label = btn.textContent; btn.textContent = 'Guardando…'; }
     else if (btn.dataset.label) btn.textContent = label || btn.dataset.label;
@@ -145,12 +157,24 @@
     localStorage.removeItem(TOKEN_KEY);
     me = null;
     clearInterval(openTimer);
+    cart = [];
+    posClient = null;
     show('loginPage');
   }
 
-  async function enterApp() {
+  function paintUser() {
     $('userName').textContent = me.name;
     $('userRole').textContent = ROLE_LABEL[me.role];
+    $('headerUser').textContent = `${me.name} · ${ROLE_LABEL[me.role]}`;
+  }
+
+  async function refreshMe() {
+    me = (await api('GET', 'me')).user;
+    paintUser();
+  }
+
+  async function enterApp() {
+    paintUser();
     buildNav();
     const p = await api('GET', 'plans');
     plans = p.plans;
@@ -235,7 +259,39 @@
 
   async function showClientCheckin(id) {
     const { client } = await api('GET', 'clients/' + encodeURIComponent(id));
-    const canEnter = client.membership_status === 'activa' || client.membership_status === 'por_vencer';
+    const st = client.membership_status;
+    const active = st === 'activa' || st === 'por_vencer';
+    const endTxt = fmtDate(client.membership_end);
+
+    // Estado de la membresía: cada caso se ve distinto para no confundir a recepción.
+    const statusBox = {
+      activa: `<div class="status-box ok">✅ <strong>Membresía activa</strong> hasta el ${endTxt}${client.membership_plan ? ` · ${esc(client.membership_plan)}` : ''}</div>`,
+      por_vencer: `<div class="status-box warn">⚠️ <strong>Membresía por vencer</strong>: vence el ${endTxt}. Renueva para seguir entrando.</div>`,
+      vencida: `<div class="status-box off">⛔ <strong>Membresía vencida</strong> desde el ${endTxt}. No puede entrar hasta renovar.</div>`,
+      sin_membresia: '<div class="status-box off">⛔ <strong>Sin membresía</strong>. Debe cobrar una membresía para entrar.</div>',
+    }[st] || '';
+
+    const planOptions = plans.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} — ${money(p.price)}</option>`).join('');
+    const methodOptions = Object.entries(METHOD_LABEL)
+      .filter(([v]) => v !== 'cuenta')
+      .map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+    const renewLabel = active ? '🔁 Renovar' : '💳 Cobrar y activar';
+    const renewForm = `
+      <div class="form-row">
+        <div class="form-group"><label>Plan:</label><select id="renewPlan">${planOptions}</select></div>
+        <div class="form-group"><label>Método:</label><select id="renewMethod">${methodOptions}</select></div>
+      </div>
+      <div class="btn-group"><button class="btn btn-primary" id="renewBtn">${renewLabel}</button></div>`;
+
+    let renewSection;
+    if (st === 'activa') {
+      renewSection = `<details class="renew-details"><summary>🔁 Renovar por adelantado</summary>${renewForm}</details>`;
+    } else if (st === 'por_vencer') {
+      renewSection = `<div class="card-title" style="margin-bottom:12px;">🔁 Renovar membresía</div>${renewForm}`;
+    } else {
+      renewSection = `<div class="card-title" style="margin-bottom:12px;">💳 Cobrar membresía</div>${renewForm}`;
+    }
+
     $('ciDetail').style.display = 'block';
     $('ciDetail').innerHTML = `
       <div class="flex-between">
@@ -243,26 +299,15 @@
           <div class="detail-title">${esc(client.full_name)}</div>
           <div class="muted">Cédula ${esc(client.cedula || '–')} · Tel. ${esc(client.phone || '–')}</div>
         </div>
-        ${badge(client.membership_status)}
+        ${badge(st)}
       </div>
-      <div class="detail-meta">
-        Plan: <strong>${esc(client.membership_plan || '—')}</strong> · vence: <strong>${fmtDate(client.membership_end)}</strong>
-      </div>
+      ${statusBox}
       <div class="btn-group">
-        <button class="btn btn-success" id="ciEnter" ${canEnter ? '' : 'disabled'}>✓ Registrar entrada</button>
+        <button class="btn btn-success" id="ciEnter" ${active ? '' : 'disabled'}>✓ Registrar entrada</button>
       </div>
-      ${canEnter ? '' : '<p class="muted" style="margin-top:8px;">Para entrar, primero debe renovar o pagar el día.</p>'}
+      ${active ? '' : '<p class="muted" style="margin-top:8px;">Para entrar, primero debe cobrar la membresía.</p>'}
       <hr class="detail-divider">
-      <div class="card-title" style="margin-bottom:12px;">💳 Cobrar membresía</div>
-      <div class="form-row">
-        <div class="form-group"><label>Plan:</label>
-          <select id="renewPlan">${plans.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} — ${money(p.price)}</option>`).join('')}</select>
-        </div>
-        <div class="form-group"><label>Método:</label>
-          <select id="renewMethod">${Object.entries(METHOD_LABEL).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
-        </div>
-      </div>
-      <div class="btn-group"><button class="btn btn-primary" id="renewBtn">💳 Cobrar y activar</button></div>
+      ${renewSection}
     `;
 
     // Guardar el botón antes de cualquier await: e.currentTarget queda en null después.
@@ -368,12 +413,37 @@
   }
 
   async function clientDetail(id) {
-    const { client, memberships, payments, entries } = await api('GET', 'clients/' + encodeURIComponent(id));
+    const [{ client, memberships, payments, entries }, ledger] = await Promise.all([
+      api('GET', 'clients/' + encodeURIComponent(id)),
+      api('GET', 'clients/' + encodeURIComponent(id) + '/ledger'),
+    ]);
+    const bal = Number(ledger.balance || 0);
+    const movRows = ledger.movements.map((m) => `
+      <tr>
+        <td>${fmtDate(m.day)}</td>
+        <td>${m.kind === 'cargo' ? 'Cargo' : 'Abono'}</td>
+        <td>${esc(m.note || '')}${m.method ? ` · ${esc(METHOD_LABEL[m.method] || m.method)}` : ''}</td>
+        <td class="${m.kind === 'cargo' ? 'amt-debit' : 'amt-credit'}">${m.kind === 'cargo' ? '+' : '−'}${money(m.amount)}</td>
+      </tr>`).join('');
+
     openModal(`
       <button class="modal-close" data-close>✕</button>
       <div class="modal-header">${esc(client.full_name)}</div>
       <p class="muted">Cédula ${esc(client.cedula || '–')} · Tel. ${esc(client.phone || '–')} · ${esc(client.email || '')}</p>
       <p style="margin-top:8px;">Estado: ${badge(client.membership_status)} · Plan: <strong>${esc(client.membership_plan || '—')}</strong> · Vence: <strong>${fmtDate(client.membership_end)}</strong></p>
+      <hr class="detail-divider">
+      <div class="card-title" style="font-size:15px;">📒 Cuenta del cliente</div>
+      <div class="status-box ${bal > 0.005 ? 'warn' : 'ok'}">Saldo pendiente: <strong>${money(bal)}</strong></div>
+      ${bal > 0.005 ? `
+      <form id="abonoForm" data-id="${esc(client.id)}" style="margin-top:12px;">
+        <div class="form-row">
+          <div class="form-group"><label>Monto del abono:</label><input name="amount" type="number" step="0.01" min="0.01" max="${bal.toFixed(2)}" required></div>
+          <div class="form-group"><label>Método:</label><select name="method">${Object.entries(METHOD_LABEL).filter(([v]) => v !== 'cuenta').map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
+        </div>
+        <div class="error" id="abonoError"></div>
+        <div class="btn-group"><button class="btn btn-success" type="submit">✓ Registrar abono</button></div>
+      </form>` : ''}
+      ${ledger.movements.length ? `<table style="margin-top:12px;"><thead><tr><th>Día</th><th>Tipo</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${movRows}</tbody></table>` : '<p class="muted">Sin movimientos de cuenta.</p>'}
       <hr class="detail-divider">
       <div class="card-title" style="font-size:15px;">Membresías</div>
       ${memberships.length ? `<table><thead><tr><th>Plan</th><th>Desde</th><th>Hasta</th><th>Monto</th></tr></thead><tbody>${
@@ -391,7 +461,7 @@
   }
 
   // -------------------------------------------------------------------------
-  // Inventario y venta rápida
+  // Market: productos en cuadrícula, carrito y venta
   // -------------------------------------------------------------------------
 
   async function loadProducts() {
@@ -399,10 +469,51 @@
     products = r.products;
     $('newProductBtn').style.display = can('admin') ? '' : 'none';
 
+    // Ajusta el carrito a los datos nuevos (stock agotado o precio cambiado).
+    cart = cart
+      .map((c) => {
+        const p = products.find((x) => x.id === c.product_id);
+        if (!p || p.stock <= 0) return null;
+        return { ...c, price: p.price, qty: Math.min(c.qty, p.stock) };
+      })
+      .filter(Boolean);
+
+    renderMarket();
+    renderProductsTable();
+    renderCart();
+  }
+
+  function renderMarket() {
+    const cats = ['Todos', ...new Set(products.map(categoryOf))];
+    if (!cats.includes(marketCat)) marketCat = 'Todos';
+    $('mkCats').innerHTML = cats.map((c) => (
+      `<button class="cat-tab ${c === marketCat ? 'active' : ''}" data-cat="${esc(c)}">${esc(c)}</button>`
+    )).join('');
+
+    const q = marketSearch.trim().toLowerCase();
+    const list = products.filter((p) => (
+      (marketCat === 'Todos' || categoryOf(p) === marketCat) &&
+      (!q || p.name.toLowerCase().includes(q))
+    ));
+    $('mkGrid').innerHTML = list.map((p) => {
+      const out = p.stock <= 0;
+      const low = !out && p.stock <= p.min_stock;
+      return `
+        <button class="pcard" data-add="${esc(p.id)}" ${out ? 'disabled' : ''}>
+          <span class="pcard-icon">${esc(p.icon || '📦')}</span>
+          <span class="pcard-name">${esc(p.name)}</span>
+          <span class="pcard-price">${money(p.price)}</span>
+          <span class="pcard-stock ${low ? 'low' : ''}">${out ? 'Agotado' : (low ? `Pocas: ${p.stock}` : `Stock ${p.stock}`)}</span>
+        </button>`;
+    }).join('') || '<p class="muted" style="grid-column:1/-1;">No hay productos en esta categoría.</p>';
+  }
+
+  function renderProductsTable() {
     $('productsBody').innerHTML = products.map((p) => {
       const low = p.stock <= p.min_stock;
       return `<tr>
-        <td><strong>${esc(p.name)}</strong></td>
+        <td><span class="tbl-icon">${esc(p.icon || '📦')}</span><strong>${esc(p.name)}</strong></td>
+        <td>${esc(categoryOf(p))}</td>
         <td>${p.stock}</td>
         <td>${money(p.price)}</td>
         <td>${low ? '<span class="badge badge-warning">Bajo stock</span>' : '<span class="badge badge-success">OK</span>'}</td>
@@ -411,53 +522,102 @@
           <button class="btn btn-secondary btn-small" data-edit-product="${esc(p.id)}">Editar</button>` : ''}
         </td>
       </tr>`;
-    }).join('') || '<tr><td colspan="5" class="muted">Aún no hay productos.</td></tr>';
+    }).join('') || '<tr><td colspan="6" class="muted">Aún no hay productos.</td></tr>';
+  }
 
-    const sellable = products.filter((p) => p.stock > 0);
-    $('posProduct').innerHTML = sellable.length
-      ? sellable.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} — ${money(p.price)} (stock ${p.stock})</option>`).join('')
-      : '<option value="">Sin productos disponibles</option>';
+  function addToCart(id) {
+    const p = products.find((x) => x.id === id);
+    if (!p) return;
+    const line = cart.find((c) => c.product_id === id);
+    const newQty = (line?.qty || 0) + 1;
+    if (newQty > p.stock) return toast(`Solo hay ${p.stock} de ${p.name}`, false);
+    if (line) line.qty = newQty;
+    else cart.push({ product_id: id, name: p.name, icon: p.icon || '📦', price: p.price, qty: 1 });
+    renderCart();
+  }
+
+  function changeQty(i, delta) {
+    const line = cart[i];
+    if (!line) return;
+    const p = products.find((x) => x.id === line.product_id);
+    const next = line.qty + delta;
+    if (next <= 0) { cart.splice(i, 1); }
+    else if (p && next > p.stock) { return toast(`Solo hay ${p.stock} de ${p.name}`, false); }
+    else line.qty = next;
     renderCart();
   }
 
   function renderCart() {
-    $('cartBody').innerHTML = cart.map((c, i) => `
-      <tr>
-        <td>${esc(c.name)}</td>
-        <td>${c.qty}</td>
-        <td>${money(c.qty * c.price)}</td>
-        <td class="row-actions"><button class="btn btn-danger btn-small" data-remove="${i}">Quitar</button></td>
-      </tr>`).join('') || '<tr><td colspan="4" class="muted">Carrito vacío.</td></tr>';
+    $('cartItems').innerHTML = cart.length ? cart.map((c, i) => `
+      <div class="cart-line">
+        <span class="ci">${esc(c.icon)}</span>
+        <div class="cart-name"><strong>${esc(c.name)}</strong><div class="muted">${money(c.price)} c/u</div></div>
+        <div class="qty-ctrl">
+          <button data-dec="${i}" aria-label="Quitar uno">−</button>
+          <span>${c.qty}</span>
+          <button data-inc="${i}" aria-label="Agregar uno">+</button>
+        </div>
+        <strong class="cart-amt">${money(c.qty * c.price)}</strong>
+        <button class="btn-x" data-remove="${i}" title="Quitar producto">✕</button>
+      </div>`).join('') : '<div class="cart-empty">Toca un producto para agregarlo a la venta.</div>';
+
+    const units = cart.reduce((s, c) => s + c.qty, 0);
     const total = cart.reduce((s, c) => s + c.qty * c.price, 0);
+    $('sumItems').textContent = units;
     $('cartTotal').textContent = money(total);
+    $('posCharge').disabled = cart.length === 0;
+
+    $('posClientInfo').innerHTML = posClient
+      ? `<div class="client-chip ${posClient.balance > 0.005 ? 'debt' : ''}">
+           <div><strong>👤 ${esc(posClient.full_name)}</strong>
+             <div class="muted">Saldo pendiente: ${money(posClient.balance)}</div></div>
+           <button class="btn btn-secondary btn-small" data-clear-client>Quitar</button>
+         </div>`
+      : '<p class="muted" style="margin-top:6px;">Sin cliente: venta de mostrador.</p>';
+
+    // "Cargar a cuenta" solo está disponible cuando hay un cliente seleccionado.
+    $('posCuentaOpt').disabled = !posClient;
+    if (!posClient && $('posMethod').value === 'cuenta') $('posMethod').value = 'efectivo';
   }
 
-  function addToCart() {
-    const id = $('posProduct').value;
-    const qty = parseInt($('posQty').value, 10);
-    const p = products.find((x) => x.id === id);
-    if (!p) return toast('Selecciona un producto', false);
-    if (!(qty >= 1)) return toast('Cantidad inválida', false);
-    const inCart = cart.find((c) => c.product_id === id);
-    const newQty = (inCart?.qty || 0) + qty;
-    if (newQty > p.stock) return toast(`Solo hay ${p.stock} de ${p.name}`, false);
-    if (inCart) inCart.qty = newQty;
-    else cart.push({ product_id: id, name: p.name, price: p.price, qty });
-    $('posQty').value = 1;
+  async function searchPosClient() {
+    const q = $('posClientSearch').value.trim();
+    if (q.length < 2) { $('posClientResults').innerHTML = ''; return; }
+    const { clients } = await api('GET', 'clients?q=' + encodeURIComponent(q));
+    $('posClientResults').innerHTML = clients.slice(0, 6).map((c) => `
+      <div class="result-row" data-pick="${esc(c.id)}">
+        <div><strong>${esc(c.full_name)}</strong> <span class="muted">${esc(c.cedula || '')}</span></div>
+      </div>`).join('') || '<p class="muted">Sin resultados.</p>';
+  }
+
+  async function pickPosClient(id) {
+    const { client } = await api('GET', 'clients/' + encodeURIComponent(id));
+    posClient = { id: client.id, full_name: client.full_name, balance: Number(client.balance || 0) };
+    $('posClientSearch').value = '';
+    $('posClientResults').innerHTML = '';
     renderCart();
   }
 
   async function chargeSale(btn) {
     if (!cart.length) return toast('Agrega productos al carrito', false);
+    const method = $('posMethod').value;
+    if (method === 'cuenta' && !posClient) return toast('Selecciona el cliente para cargar a cuenta', false);
+
     setBusy(btn, true);
     try {
       const r = await api('POST', 'sales', {
         items: cart.map((c) => ({ product_id: c.product_id, qty: c.qty })),
-        method: $('posMethod').value,
+        method,
+        client_id: posClient ? posClient.id : undefined,
       });
+      const who = posClient ? ` · ${posClient.full_name}` : '';
+      toast(r.sale.on_account
+        ? `✓ Cargado a la cuenta${who}: ${money(r.sale.total)}`
+        : `✓ Venta cobrada${who}: ${money(r.sale.total)}`);
       cart = [];
+      posClient = null;
+      $('posMethod').value = 'efectivo';
       renderCart();
-      toast(`✓ Venta cobrada: ${money(r.sale.total)}`);
       loadProducts();
     } catch (err) {
       toast(err.message, false);
@@ -468,15 +628,29 @@
 
   function productFormHtml(p = {}) {
     const isEdit = !!p.id;
+    const cur = p.icon || '📦';
+    const cats = [...new Set(products.map((x) => x.category).filter(Boolean))];
     return `
       <div class="modal-header">${isEdit ? '✏️ Editar producto' : '➕ Nuevo producto'}</div>
       <form id="productForm" data-id="${esc(p.id || '')}">
         <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nombre:</label><input name="name" required value="${esc(p.name ?? '')}"></div></div>
         <div class="form-row">
           <div class="form-group"><label>Precio:</label><input name="price" type="number" step="0.01" min="0" required value="${p.price ?? ''}"></div>
-          <div class="form-group"><label>Stock mínimo:</label><input name="min_stock" type="number" min="0" value="${p.min_stock ?? 5}"></div>
+          <div class="form-group"><label>Categoría:</label><input name="category" list="catList" placeholder="Ej: Bebidas" value="${esc(p.category ?? '')}"><datalist id="catList">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></div>
         </div>
-        ${isEdit ? '' : '<div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Stock inicial:</label><input name="stock" type="number" min="0" value="0"></div></div>'}
+        <div class="form-row">
+          <div class="form-group"><label>Stock mínimo:</label><input name="min_stock" type="number" min="0" value="${p.min_stock ?? 5}"></div>
+          ${isEdit ? '<div class="form-group"></div>' : '<div class="form-group"><label>Stock inicial:</label><input name="stock" type="number" min="0" value="0"></div>'}
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="grid-column:1 / -1;">
+            <label>Icono:</label>
+            <div class="icon-grid">${PRODUCT_ICONS.map((i) => (
+              `<button type="button" class="icon-opt ${i === cur ? 'sel' : ''}" data-icon="${i}">${i}</button>`
+            )).join('')}</div>
+            <input type="hidden" name="icon" value="${esc(cur)}">
+          </div>
+        </div>
         <div class="error" id="productError"></div>
         <div class="btn-group">
           <button class="btn btn-primary" type="submit">✓ Guardar</button>
@@ -502,13 +676,16 @@
     $('rEntries').textContent = r.entries_total;
     $('rUnique').textContent = r.unique_clients;
     $('rNew').textContent = r.new_clients;
+    $('rAbonos').textContent = money(r.income_abonos);
+    $('rOnAccount').textContent = money(r.charged_to_accounts);
+    $('rPending').textContent = money(r.accounts_pending);
 
     $('repDaysBody').innerHTML = r.days.map((d) => `
       <tr><td>${fmtDate(d.day)}</td><td>${d.entries}</td><td>${money(d.income)}</td></tr>`).join('')
       || '<tr><td colspan="3" class="muted">Sin movimientos en este período.</td></tr>';
 
     $('repMethodBody').innerHTML = Object.entries(r.by_method).map(([m, v]) => (
-      `<tr><td>${METHOD_LABEL[m]}</td><td>${money(v)}</td></tr>`
+      `<tr><td>${METHOD_LABEL[m] || esc(m)}</td><td>${money(v)}</td></tr>`
     )).join('');
 
     $('repProductsBody').innerHTML = r.products.map((p) => (
@@ -521,7 +698,8 @@
   // -------------------------------------------------------------------------
 
   async function loadConfig() {
-    const [{ settings }, { users }] = await Promise.all([api('GET', 'settings'), api('GET', 'users')]);
+    const [{ settings }, usersRes] = await Promise.all([api('GET', 'settings'), api('GET', 'users')]);
+    users = usersRes.users;
     const form = $('settingsForm');
     Object.entries(settings).forEach(([k, v]) => {
       const el = form.elements[k];
@@ -539,13 +717,21 @@
       </tr>`).join('');
 
     $('newUserBtn').style.display = canEdit ? '' : 'none';
-    $('usersBody').innerHTML = users.map((u) => `
+    $('usersBody').innerHTML = users.map((u) => {
+      // El creador edita a cualquiera; el administrador solo a usuarios de recepción.
+      const editable = me.role === 'creator' || u.role === 'user';
+      const removable = me.role === 'creator' && u.id !== me.id;
+      return `
       <tr>
-        <td>${esc(u.name)}</td>
+        <td>${esc(u.name)}${u.id === me.id ? ' <span class="muted">(tú)</span>' : ''}</td>
         <td>${esc(u.email)}</td>
         <td>${esc(ROLE_LABEL[u.role])}</td>
-        <td class="row-actions">${me.role === 'creator' && u.id !== me.id ? `<button class="btn btn-danger btn-small" data-del-user="${esc(u.id)}">Eliminar</button>` : ''}</td>
-      </tr>`).join('');
+        <td class="row-actions">
+          ${editable ? `<button class="btn btn-secondary btn-small" data-edit-user="${esc(u.id)}">Editar</button>` : ''}
+          ${removable ? `<button class="btn btn-danger btn-small" data-del-user="${esc(u.id)}">Eliminar</button>` : ''}
+        </td>
+      </tr>`;
+    }).join('');
   }
 
   function planFormHtml(p) {
@@ -565,10 +751,14 @@
       </form>`;
   }
 
-  function userFormHtml() {
-    const roles = me.role === 'creator'
+  function roleOptions() {
+    return me.role === 'creator'
       ? [['creator', '👑 Creador'], ['admin', '📊 Administrador'], ['user', '👤 Recepción']]
       : [['admin', '📊 Administrador'], ['user', '👤 Recepción']];
+  }
+
+  function userFormHtml() {
+    const roles = roleOptions();
     return `
       <div class="modal-header">➕ Crear usuario</div>
       <form id="userForm">
@@ -581,6 +771,34 @@
         <div class="error" id="userError"></div>
         <div class="btn-group">
           <button class="btn btn-primary" type="submit">✓ Crear</button>
+          <button class="btn btn-secondary" type="button" data-close>Cancelar</button>
+        </div>
+      </form>`;
+  }
+
+  function userEditFormHtml(u) {
+    const self = u.id === me.id;
+    const roles = roleOptions();
+    return `
+      <div class="modal-header">✏️ Editar usuario</div>
+      <form id="userEditForm" data-id="${esc(u.id)}">
+        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nombre:</label><input name="name" required value="${esc(u.name)}"></div></div>
+        <div class="form-row">
+          <div class="form-group"><label>Rol:</label>
+            <select name="role" ${self ? 'disabled' : ''}>${roles.map(([v, l]) => `<option value="${v}" ${v === u.role ? 'selected' : ''}>${l}</option>`).join('')}</select>
+          </div>
+          <div class="form-group"><label>Estado:</label>
+            <select name="active" ${self ? 'disabled' : ''}>
+              <option value="1" ${u.active ? 'selected' : ''}>Activo</option>
+              <option value="0" ${!u.active ? 'selected' : ''}>Desactivado</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nueva contraseña (opcional, mínimo 8):</label><input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="Déjala en blanco para no cambiarla"></div></div>
+        <p class="muted" style="margin-bottom:10px;">${self ? 'No puedes cambiar tu propio rol ni desactivarte.' : 'Al desactivar o cambiar la contraseña, la sesión de ese usuario se cierra.'}</p>
+        <div class="error" id="userError"></div>
+        <div class="btn-group">
+          <button class="btn btn-primary" type="submit">✓ Guardar</button>
           <button class="btn btn-secondary" type="button" data-close>Cancelar</button>
         </div>
       </form>`;
@@ -629,7 +847,7 @@
     });
 
     $('logoutBtn').addEventListener('click', () => {
-      if (confirm('¿Cerrar sesión?')) logout(false);
+      if (confirm('¿Cerrar sesión para ingresar con otro usuario?')) logout(false);
     });
 
     // Check-in
@@ -671,7 +889,46 @@
       }
     });
 
-    // Inventario
+    // Market: cuadrícula, categorías y búsqueda
+    $('mkSearch').addEventListener('input', (e) => { marketSearch = e.target.value; renderMarket(); });
+    $('mkCats').addEventListener('click', (e) => {
+      const c = e.target.closest('[data-cat]');
+      if (!c) return;
+      marketCat = c.dataset.cat;
+      renderMarket();
+    });
+    $('mkGrid').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-add]');
+      if (b && !b.disabled) addToCart(b.dataset.add);
+    });
+
+    // Market: carrito y cliente
+    $('cartItems').addEventListener('click', (e) => {
+      const t = e.target;
+      if (t.dataset.inc !== undefined) changeQty(Number(t.dataset.inc), 1);
+      else if (t.dataset.dec !== undefined) changeQty(Number(t.dataset.dec), -1);
+      else if (t.dataset.remove !== undefined) { cart.splice(Number(t.dataset.remove), 1); renderCart(); }
+    });
+    let posClientTimer;
+    $('posClientSearch').addEventListener('input', () => {
+      clearTimeout(posClientTimer);
+      posClientTimer = setTimeout(() => searchPosClient().catch((e) => toast(e.message, false)), 250);
+    });
+    $('posClientResults').addEventListener('click', (e) => {
+      const row = e.target.closest('[data-pick]');
+      if (row) pickPosClient(row.dataset.pick).catch((err) => toast(err.message, false));
+    });
+    $('posClientInfo').addEventListener('click', (e) => {
+      if (e.target.dataset.clearClient !== undefined) { posClient = null; renderCart(); }
+    });
+    $('posCharge').addEventListener('click', (e) => chargeSale(e.currentTarget));
+    $('posClear').addEventListener('click', () => {
+      cart = [];
+      posClient = null;
+      renderCart();
+    });
+
+    // Inventario (administración de productos)
     $('newProductBtn').addEventListener('click', () => openModal(productFormHtml()));
     $('productsBody').addEventListener('click', (e) => {
       const restock = e.target.dataset.restock;
@@ -684,6 +941,7 @@
             <div class="form-row">
               <div class="form-group"><label>Cantidad que ingresa:</label><input name="qty" type="number" min="1" required></div>
             </div>
+            <div class="error" id="restockError"></div>
             <div class="btn-group">
               <button class="btn btn-primary" type="submit">✓ Registrar</button>
               <button class="btn btn-secondary" type="button" data-close>Cancelar</button>
@@ -693,12 +951,6 @@
       }
       if (edit) openModal(productFormHtml(products.find((x) => x.id === edit)));
     });
-    $('posAdd').addEventListener('click', addToCart);
-    $('cartBody').addEventListener('click', (e) => {
-      const i = e.target.dataset.remove;
-      if (i !== undefined) { cart.splice(Number(i), 1); renderCart(); }
-    });
-    $('posCharge').addEventListener('click', (e) => chargeSale(e.currentTarget));
 
     // Reportes
     $('repLoad').addEventListener('click', () => loadReport().catch((e) => toast(e.message, false)));
@@ -724,10 +976,16 @@
     });
     $('newUserBtn').addEventListener('click', () => openModal(userFormHtml()));
     $('usersBody').addEventListener('click', async (e) => {
-      const id = e.target.dataset.delUser;
-      if (!id || !confirm('¿Eliminar este usuario? Ya no podrá ingresar.')) return;
+      const editId = e.target.dataset.editUser;
+      const delId = e.target.dataset.delUser;
+      if (editId) {
+        const u = users.find((x) => x.id === editId);
+        if (u) openModal(userEditFormHtml(u));
+        return;
+      }
+      if (!delId || !confirm('¿Eliminar este usuario? Ya no podrá ingresar.')) return;
       try {
-        await api('DELETE', 'users/' + encodeURIComponent(id));
+        await api('DELETE', 'users/' + encodeURIComponent(delId));
         toast('Usuario eliminado');
         loadConfig();
       } catch (err) {
@@ -735,9 +993,16 @@
       }
     });
 
-    // Modales: delegación para formularios y cierre
+    // Modales: delegación para formularios, selector de iconos y cierre
     $('modal').addEventListener('click', (e) => {
       if (e.target.id === 'modal' || e.target.dataset.close !== undefined) closeModal();
+    });
+    $('modalBox').addEventListener('click', (e) => {
+      const icon = e.target.closest('[data-icon]');
+      if (!icon) return;
+      const form = icon.closest('form');
+      form.querySelector('input[name="icon"]').value = icon.dataset.icon;
+      form.querySelectorAll('.icon-opt').forEach((b) => b.classList.toggle('sel', b === icon));
     });
     $('modalBox').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -767,6 +1032,14 @@
           toast('Stock actualizado');
           closeModal();
           loadProducts();
+        } else if (form.id === 'abonoForm') {
+          await api('POST', 'clients/' + encodeURIComponent(form.dataset.id) + '/abonos', {
+            amount: data.amount,
+            method: data.method,
+          });
+          toast('Abono registrado');
+          await clientDetail(form.dataset.id);
+          loadClients().catch(() => {});
         } else if (form.id === 'planForm') {
           await api('PUT', 'plans/' + encodeURIComponent(form.dataset.id), data);
           toast('Plan actualizado');
@@ -777,6 +1050,17 @@
           await api('POST', 'users', data);
           toast('Usuario creado');
           closeModal();
+          loadConfig();
+        } else if (form.id === 'userEditForm') {
+          const payload = { name: data.name };
+          if (data.role !== undefined) payload.role = data.role;
+          if (data.active !== undefined) payload.active = data.active === '1';
+          if (data.password) payload.password = data.password;
+          const id = form.dataset.id;
+          await api('PUT', 'users/' + encodeURIComponent(id), payload);
+          toast('Usuario actualizado');
+          closeModal();
+          if (id === me.id) await refreshMe();
           loadConfig();
         }
       } catch (err) {

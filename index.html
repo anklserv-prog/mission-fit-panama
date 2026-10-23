@@ -60,15 +60,18 @@
                 <div class="user-info-row"><span class="user-info-label">Usuario:</span><span class="user-info-value" id="userName">-</span></div>
             </div>
             <ul class="nav-menu" id="navMenu"></ul>
-            <div class="sidebar-footer">
-                <button class="btn-logout" id="logoutBtn">🚪 Cerrar Sesión</button>
-            </div>
         </aside>
 
         <div class="main-content">
-            <div class="header">
-                <div class="header-title" id="headerTitle">Bienvenido</div>
-                <div class="header-subtitle" id="headerSubtitle"></div>
+            <div class="header header-row">
+                <div>
+                    <div class="header-title" id="headerTitle">Bienvenido</div>
+                    <div class="header-subtitle" id="headerSubtitle"></div>
+                </div>
+                <div class="header-user">
+                    <span id="headerUser"></span>
+                    <button class="btn btn-secondary btn-small" id="logoutBtn">🚪 Cambiar usuario</button>
+                </div>
             </div>
 
             <div class="content-area">
@@ -127,57 +130,57 @@
                     </div>
                 </div>
 
-                <!-- INVENTARIO Y VENTAS -->
+                <!-- MARKET: VENTA Y PRODUCTOS -->
                 <div id="inventarioView" class="view">
-                    <div class="card">
-                        <div class="toolbar">
-                            <div class="card-title" style="margin:0;"><span class="card-title-icon">📦</span> Productos</div>
-                            <button class="btn btn-primary" id="newProductBtn" style="display:none;">➕ Nuevo Producto</button>
+                    <div class="market-layout">
+                        <div class="card market-main">
+                            <input type="search" id="mkSearch" class="wide-input" placeholder="🔍 Buscar producto...">
+                            <div id="mkCats" class="cat-tabs"></div>
+                            <div id="mkGrid" class="product-grid"></div>
                         </div>
-                        <div class="table-responsive" style="margin-top:16px;">
-                            <table>
-                                <thead>
-                                    <tr><th>Producto</th><th>Stock</th><th>Precio</th><th>Estado</th><th></th></tr>
-                                </thead>
-                                <tbody id="productsBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
 
-                    <div class="card">
-                        <div class="card-title"><span class="card-title-icon">🧾</span> Venta rápida</div>
-                        <div class="form-row">
+                        <aside class="card cart-card">
+                            <div class="card-title"><span class="card-title-icon">🧾</span> Venta</div>
                             <div class="form-group">
-                                <label>Producto:</label>
-                                <select id="posProduct"></select>
+                                <label>Cliente (opcional):</label>
+                                <input type="search" id="posClientSearch" class="wide-input" placeholder="Nombre, cédula o teléfono...">
+                                <div id="posClientResults" class="results"></div>
+                                <div id="posClientInfo"></div>
                             </div>
-                            <div class="form-group">
-                                <label>Cantidad:</label>
-                                <input type="number" id="posQty" min="1" value="1">
+                            <div id="cartItems" class="cart-lines"></div>
+                            <div class="sum-box">
+                                <div class="sum-row"><span>Artículos</span><strong id="sumItems">0</strong></div>
+                                <div class="sum-row sum-total"><span>Total</span><span id="cartTotal">$0.00</span></div>
                             </div>
-                        </div>
-                        <div class="btn-group" style="margin-top:0;"><button class="btn btn-secondary" id="posAdd">➕ Agregar</button></div>
-                        <div class="table-responsive" style="margin-top:16px;">
-                            <table>
-                                <thead><tr><th>Producto</th><th>Cant.</th><th>Subtotal</th><th></th></tr></thead>
-                                <tbody id="cartBody"></tbody>
-                            </table>
-                        </div>
-                        <div class="form-row" style="margin-top:16px;">
-                            <div class="form-group">
+                            <div class="form-group" style="margin-top:12px;">
                                 <label>Método de pago:</label>
                                 <select id="posMethod">
                                     <option value="efectivo">Efectivo</option>
                                     <option value="tarjeta">Tarjeta</option>
                                     <option value="yapi">Yapi</option>
+                                    <option value="cuenta" id="posCuentaOpt" disabled>📒 Cargar a cuenta del cliente</option>
                                 </select>
                             </div>
-                            <div class="form-group">
-                                <label>Total:</label>
-                                <div class="total-box" id="cartTotal">$0.00</div>
+                            <div class="btn-group">
+                                <button class="btn btn-success" id="posCharge" disabled>✓ Cobrar venta</button>
+                                <button class="btn btn-secondary" id="posClear">Vaciar</button>
                             </div>
+                        </aside>
+                    </div>
+
+                    <div class="card">
+                        <div class="toolbar">
+                            <div class="card-title" style="margin:0;"><span class="card-title-icon">📦</span> Productos e inventario</div>
+                            <button class="btn btn-primary" id="newProductBtn" style="display:none;">➕ Nuevo Producto</button>
                         </div>
-                        <div class="btn-group"><button class="btn btn-success" id="posCharge">✓ Cobrar venta</button></div>
+                        <div class="table-responsive" style="margin-top:16px;">
+                            <table>
+                                <thead>
+                                    <tr><th>Producto</th><th>Categoría</th><th>Stock</th><th>Precio</th><th>Estado</th><th></th></tr>
+                                </thead>
+                                <tbody id="productsBody"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
@@ -202,6 +205,9 @@
                         <div class="stat-card info"><div class="stat-label">Entradas</div><div class="stat-value" id="rEntries">–</div></div>
                         <div class="stat-card"><div class="stat-label">Clientes únicos</div><div class="stat-value" id="rUnique">–</div></div>
                         <div class="stat-card"><div class="stat-label">Clientes nuevos</div><div class="stat-value" id="rNew">–</div></div>
+                        <div class="stat-card success"><div class="stat-label">Abonos cobrados</div><div class="stat-value" id="rAbonos">–</div></div>
+                        <div class="stat-card warning"><div class="stat-label">Cargado a cuentas</div><div class="stat-value" id="rOnAccount">–</div></div>
+                        <div class="stat-card warning"><div class="stat-label">Por cobrar (total)</div><div class="stat-value" id="rPending">–</div></div>
                     </div>
                     <div class="card">
                         <div class="card-title">Por día</div>
