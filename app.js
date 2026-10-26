@@ -318,6 +318,14 @@
     $('ciDetail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
+  // Si la tarjeta de check-in muestra la entrada que acaba de cerrarse (desde la lista o el modal),
+  // se vuelve a cargar para que no quede el botón "Registrar salida" ni el estado "dentro" viejos.
+  function refreshCheckinIfShowing(entryId) {
+    if (checkinClient && checkinOpen && checkinOpen.id === entryId) {
+      showClientCheckin(checkinClient.id).catch(() => {});
+    }
+  }
+
   function renderCheckin() {
     const client = checkinClient;
     const st = client.membership_status;
@@ -428,6 +436,8 @@
         showClientCheckin(client.id);
       } catch (err) {
         toast(err.message, false);
+        // 409: la entrada ya tiene salida (se dio desde la lista). Se refresca la tarjeta.
+        if (err.status === 409) showClientCheckin(client.id).catch(() => {});
       } finally {
         setBusy(btn, false);
       }
@@ -1152,8 +1162,12 @@
     } catch (err) {
       scanBusy = false;
       toast(err.message, false);
-      if ($('scanVideo') && canUseCamera()) startCamera();
-      if ($('scanHint')) $('scanHint').textContent = `${err.message}. Intenta de nuevo con otra tarjeta o escribe el código.`;
+      // No se reactiva la cámara sola: si el mismo QR sigue frente a ella, se leería otra vez en bucle.
+      // La recepción toca "Escanear otra vez" cuando quiera leer otra tarjeta.
+      if ($('scanHint')) {
+        $('scanHint').innerHTML = `${esc(err.message)}. <button class="btn btn-secondary" type="button" id="scanAgain" style="margin-left:8px;">📷 Escanear otra vez</button>`;
+        $('scanAgain')?.addEventListener('click', () => startCamera());
+      }
     }
   }
 
@@ -1456,13 +1470,15 @@
     $('openEntries').addEventListener('click', async (e) => {
       const outBtn = e.target.closest('[data-out]');
       if (outBtn) {
+        const entryId = outBtn.dataset.out;
         try {
-          const r = await api('POST', `entries/${encodeURIComponent(outBtn.dataset.out)}/check-out`);
+          const r = await api('POST', `entries/${encodeURIComponent(entryId)}/check-out`);
           toast(`Salida registrada: ${r.entry.minutes} min`);
-          loadOpenEntries();
         } catch (err) {
           toast(err.message, false);
         }
+        loadOpenEntries();
+        refreshCheckinIfShowing(entryId);
         return;
       }
       const detail = e.target.closest('[data-detail]');
@@ -1488,14 +1504,16 @@
       }
       const b = e.target.closest('[data-out-modal]');
       if (!b) return;
+      const entryId = b.dataset.outModal;
       try {
-        const r = await api('POST', `entries/${encodeURIComponent(b.dataset.outModal)}/check-out`);
+        const r = await api('POST', `entries/${encodeURIComponent(entryId)}/check-out`);
         closeModal();
         toast(`Salida registrada: ${r.entry.minutes} min`);
-        loadOpenEntries();
       } catch (err) {
         toast(err.message, false);
       }
+      loadOpenEntries();
+      refreshCheckinIfShowing(entryId);
     });
 
     // Clientes

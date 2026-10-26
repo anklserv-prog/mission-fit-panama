@@ -395,3 +395,6 @@
 .sale-main { min-width: 0; display: flex; flex-direction: column; }
 .sale-main > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .sale-amt { display: flex; flex-direction: column; align-items: flex-end; font-size: 14px; }
+
+/* Evita el zoom de Safari (iPad/iPhone) por doble toque al tocar botones y tarjetas. El pellizco para hacer zoom sigue funcionando. */
+* { touch-action: manipulation; }
