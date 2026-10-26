@@ -282,6 +282,9 @@
         <div class="form-group"><label>Plan:</label><select id="renewPlan">${planOptions}</select></div>
         <div class="form-group"><label>Método:</label><select id="renewMethod">${methodOptions}</select></div>
       </div>
+      <div class="form-row ref-box" id="renewRefBox" style="display:none;">
+        <div class="form-group" style="grid-column:1 / -1;"><label>Código de transacción de Yappy:</label><input id="renewRef" class="wide-input" autocomplete="off" placeholder="Ej: 1A2B3C4D"></div>
+      </div>
       <div class="btn-group"><button class="btn btn-primary" id="renewBtn">${renewLabel}</button></div>`;
 
     let renewSection;
@@ -327,6 +330,9 @@
       }
     });
 
+    $('renewMethod').addEventListener('change', () => {
+      $('renewRefBox').style.display = $('renewMethod').value === 'yapi' ? '' : 'none';
+    });
     $('renewBtn').addEventListener('click', async (e) => {
       const btn = e.currentTarget;
       setBusy(btn, true);
@@ -335,6 +341,7 @@
           client_id: client.id,
           plan_id: $('renewPlan').value,
           method: $('renewMethod').value,
+          reference: $('renewRef').value,
         });
         toast(`Membresía activa hasta ${fmtDate(r.membership.end_date)}`);
         showClientCheckin(client.id);
@@ -413,6 +420,25 @@
       </form>`;
   }
 
+  // Formulario para cobrar una membresía a un cliente (desde su ficha o al crearlo).
+  function membershipFormHtml(clientId) {
+    const methodOptions = Object.entries(METHOD_LABEL)
+      .filter(([v]) => v !== 'cuenta')
+      .map(([v, l]) => `<option value="${v}">${v === 'yapi' ? 'Yappy' : l}</option>`).join('');
+    return `
+      <form id="memberForm" data-id="${esc(clientId)}">
+        <div class="form-row">
+          <div class="form-group"><label>Plan:</label><select name="plan_id">${plans.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} — ${money(p.price)}</option>`).join('')}</select></div>
+          <div class="form-group"><label>Método:</label><select name="method">${methodOptions}</select></div>
+        </div>
+        <div class="form-row ref-box" style="display:none;">
+          <div class="form-group" style="grid-column:1 / -1;"><label>Código de transacción de Yappy:</label><input name="reference" class="wide-input" autocomplete="off" placeholder="Ej: 1A2B3C4D"></div>
+        </div>
+        <div class="error"></div>
+        <div class="btn-group"><button class="btn btn-primary" type="submit">💳 Cobrar membresía</button></div>
+      </form>`;
+  }
+
   async function clientDetail(id) {
     const [{ client, memberships, payments, entries }, ledger] = await Promise.all([
       api('GET', 'clients/' + encodeURIComponent(id)),
@@ -445,6 +471,9 @@
         <div class="btn-group"><button class="btn btn-success" type="submit">✓ Registrar abono</button></div>
       </form>` : ''}
       ${ledger.movements.length ? `<table style="margin-top:12px;"><thead><tr><th>Día</th><th>Tipo</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${movRows}</tbody></table>` : '<p class="muted">Sin movimientos de cuenta.</p>'}
+      <hr class="detail-divider">
+      <div class="card-title" style="font-size:15px;">💳 Cobrar membresía</div>
+      ${membershipFormHtml(client.id)}
       <hr class="detail-divider">
       <div class="card-title" style="font-size:15px;">Membresías</div>
       ${memberships.length ? `<table><thead><tr><th>Plan</th><th>Desde</th><th>Hasta</th><th>Monto</th></tr></thead><tbody>${
@@ -576,6 +605,8 @@
          </div>`
       : '<p class="muted" style="margin-top:6px;">Sin cliente: venta de mostrador.</p>';
 
+    $('posRefBox').style.display = $('posMethod').value === 'yapi' ? '' : 'none';
+
     // Muestra el logo de Yappy cuando ese es el método elegido.
     $('posMethodHint').innerHTML = $('posMethod').value === 'yapi'
       ? `<span class="method-hint">${YAPPY_LOGO} Cobro por Yappy</span>`
@@ -608,12 +639,14 @@
     if (!cart.length) return toast('Agrega productos al carrito', false);
     const method = $('posMethod').value;
     if (method === 'cuenta' && !posClient) return toast('Selecciona el cliente para cargar a cuenta', false);
+    if (method === 'yapi' && !$('posRef').value.trim()) return toast('Ingresa el código de transacción de Yappy', false);
 
     setBusy(btn, true);
     try {
       const r = await api('POST', 'sales', {
         items: cart.map((c) => ({ product_id: c.product_id, qty: c.qty })),
         method,
+        reference: method === 'yapi' ? $('posRef').value : undefined,
         client_id: posClient ? posClient.id : undefined,
       });
       const who = posClient ? ` · ${posClient.full_name}` : '';
@@ -623,6 +656,7 @@
       cart = [];
       posClient = null;
       $('posMethod').value = 'efectivo';
+      $('posRef').value = '';
       renderCart();
       loadProducts();
     } catch (err) {
@@ -1011,6 +1045,12 @@
       form.querySelector('input[name="icon"]').value = icon.dataset.icon;
       form.querySelectorAll('.icon-opt').forEach((b) => b.classList.toggle('sel', b === icon));
     });
+    // Muestra el campo de código de Yappy solo cuando ese es el método elegido.
+    $('modalBox').addEventListener('change', (e) => {
+      if (e.target.name !== 'method') return;
+      const box = e.target.closest('form').querySelector('.ref-box');
+      if (box) box.style.display = e.target.value === 'yapi' ? '' : 'none';
+    });
     $('modalBox').addEventListener('submit', async (e) => {
       e.preventDefault();
       const form = e.target;
@@ -1020,10 +1060,14 @@
       try {
         if (form.id === 'clientForm') {
           const path = form.dataset.id ? 'clients/' + encodeURIComponent(form.dataset.id) : 'clients';
-          await api(form.dataset.id ? 'PUT' : 'POST', path, data);
+          const saved = await api(form.dataset.id ? 'PUT' : 'POST', path, data);
           toast('Cliente guardado');
           closeModal();
           loadClients();
+          // Un cliente nuevo pasa directo a su ficha para cobrarle la membresía.
+          if (!form.dataset.id && saved.client?.id) {
+            clientDetail(saved.client.id).catch((err) => toast(err.message, false));
+          }
         } else if (form.id === 'productForm') {
           if (form.dataset.id) {
             await api('PUT', 'products/' + encodeURIComponent(form.dataset.id), data);
@@ -1039,6 +1083,16 @@
           toast('Stock actualizado');
           closeModal();
           loadProducts();
+        } else if (form.id === 'memberForm') {
+          const r = await api('POST', 'memberships', {
+            client_id: form.dataset.id,
+            plan_id: data.plan_id,
+            method: data.method,
+            reference: data.reference,
+          });
+          toast(`Membresía activa hasta ${fmtDate(r.membership.end_date)}`);
+          await clientDetail(form.dataset.id);
+          loadClients().catch(() => {});
         } else if (form.id === 'abonoForm') {
           await api('POST', 'clients/' + encodeURIComponent(form.dataset.id) + '/abonos', {
             amount: data.amount,
