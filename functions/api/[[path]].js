@@ -353,6 +353,12 @@ route('POST', /^memberships$/, 'user', async ({ db, user, body }) => {
 
   const today = todayPanama();
   const latest = (await latestMemberships(db, clientId)).get(clientId);
+  // El uso diario es para quien no tiene membresía: un miembro activo no lo paga, y no se cobra dos veces el mismo día.
+  if (plan.duration_days === 1 && latest && latest.end_date >= today) {
+    throw new HttpError(409, latest.plan_id === plan.id
+      ? 'Ya pagó el uso diario de hoy'
+      : 'Tiene membresía activa: no puede pagar uso diario');
+  }
   const start = latest && latest.end_date >= today ? addDays(latest.end_date, 1) : today;
   const end = addDays(start, plan.duration_days - 1);
   const membershipId = newId();
