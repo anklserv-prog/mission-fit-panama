@@ -259,5 +259,17 @@ check('venta por Yappy con código registrada', yVentaOk.status === 201, JSON.st
 const yVentaDup = await call('POST', 'sales', { token: creator, body: { items: [{ product_id: pid, qty: 1 }], method: 'yapi', reference: `VY-${suffix}` } });
 check('mismo código de Yappy en otra venta rechazado', yVentaDup.status === 409, `status ${yVentaDup.status}`);
 
+// 11. Uso diario frente a membresía
+console.log('\n11. Uso diario');
+const dailyMember = await call('POST', 'memberships', { token: creator, body: { client_id: clientId, plan_id: 'daily', method: 'efectivo' } });
+check('miembro activo no puede pagar uso diario', dailyMember.status === 409, `status ${dailyMember.status}`);
+const dailyTwice = await call('POST', 'memberships', { token: creator, body: { client_id: c2.data.client.id, plan_id: 'daily', method: 'efectivo' } });
+check('no se cobra uso diario dos veces el mismo día', dailyTwice.status === 409, `status ${dailyTwice.status}`);
+const c3 = await call('POST', 'clients', { token: creator, body: { full_name: 'Visitante Prueba', cedula: `7-${suffix}` } });
+const dailyNew = await call('POST', 'memberships', { token: creator, body: { client_id: c3.data.client.id, plan_id: 'daily', method: 'efectivo' } });
+check('sin membresía sí paga uso diario', dailyNew.status === 201, `status ${dailyNew.status}`);
+const dailyIn = await call('POST', 'entries/check-in', { token: creator, body: { client_id: c3.data.client.id } });
+check('uso diario permite entrar', dailyIn.status === 201, `status ${dailyIn.status}`);
+
 console.log(`\nResultado: ${passes} pasaron, ${failures} fallaron`);
 process.exit(failures ? 1 : 0);
