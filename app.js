@@ -1435,9 +1435,42 @@
   // Configuración
   // -------------------------------------------------------------------------
 
+  // Tarjeta de reinicio de datos: solo la ve el creador. Pide escribir REINICIAR para habilitar el botón.
+  function ensureResetCard() {
+    if (me.role !== 'creator' || $('resetCard')) return;
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.id = 'resetCard';
+    card.style.borderLeft = '4px solid #DC2626';
+    card.innerHTML = `
+      <div class="card-title"><span class="card-title-icon">⚠️</span> Reiniciar datos (fin de la prueba Beta)</div>
+      <p class="muted">Borra clientes, membresías, pagos, entradas, ventas, cuentas por cobrar e inventario de productos. Conserva usuarios, planes y la configuración del gimnasio. <strong>No se puede deshacer.</strong> Si necesitas conservar algo, descárgalo antes en Reportes.</p>
+      <div class="form-row">
+        <div class="form-group"><label>Escribe <strong>REINICIAR</strong> para confirmar:</label><input id="resetConfirm" autocomplete="off"></div>
+      </div>
+      <div class="btn-group"><button class="btn btn-danger" id="resetBtn" disabled>🗑️ Reiniciar todos los datos</button></div>`;
+    $('configView').appendChild(card);
+    $('resetConfirm').addEventListener('input', () => {
+      $('resetBtn').disabled = $('resetConfirm').value.trim() !== 'REINICIAR';
+    });
+    $('resetBtn').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      setBusy(btn, true);
+      try {
+        await api('POST', 'admin/reset', { confirm: 'REINICIAR' });
+        toast('Datos reiniciados. Recargando…');
+        setTimeout(() => location.reload(), 1200);
+      } catch (err) {
+        toast(err.message, false);
+        setBusy(btn, false);
+      }
+    });
+  }
+
   async function loadConfig() {
     const [{ settings }, usersRes] = await Promise.all([api('GET', 'settings'), api('GET', 'users')]);
     users = usersRes.users;
+    ensureResetCard();
     const form = $('settingsForm');
     Object.entries(settings).forEach(([k, v]) => {
       const el = form.elements[k];
