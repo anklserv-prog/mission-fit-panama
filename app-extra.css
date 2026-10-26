@@ -241,3 +241,108 @@
 .yappy-logo { width: 20px; height: 20px; border-radius: 5px; vertical-align: middle; margin-right: 4px; }
 .method-hint { display: inline-flex; align-items: center; margin-top: 6px; font-size: 13px; color: var(--text-secondary); }
 .amt-credit { color: var(--success); font-weight: 600; white-space: nowrap; }
+
+/* Lista "Dentro del gimnasio" en Check-in */
+.inside-list { display: flex; flex-direction: column; gap: 10px; }
+.inside-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: white;
+}
+.inside-info {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: 15px;
+    text-align: left;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.inside-info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.inside-info:hover strong { color: var(--primary); text-decoration: underline; }
+.inside-time { font-size: 13px; font-weight: 700; color: var(--primary); white-space: nowrap; }
+.inside-card {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 16px 0;
+}
+.inside-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--bg-secondary);
+    font-size: 14px;
+}
+
+/* Pestañas de Check-in: más grandes y fáciles de tocar */
+.mode-tab { min-height: 52px; font-size: 16px; }
+
+/* Celular: barra de navegación fija abajo, con ícono y texto */
+@media (max-width: 768px) {
+    .sidebar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        top: auto;
+        width: 100%;
+        max-height: none;
+        padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+        border-top: 1px solid var(--border);
+        border-bottom: none;
+        background: white;
+        box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.08);
+        z-index: 150;
+    }
+    .sidebar-header { display: none; }
+    .nav-menu {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-around;
+        gap: 2px;
+        margin: 0;
+        width: 100%;
+        overflow: visible;
+    }
+    .nav-item {
+        flex: 1 1 0;
+        min-width: 0;
+        flex-direction: column;
+        justify-content: center;
+        gap: 2px;
+        padding: 6px 2px;
+        border-left: none;
+        border-radius: 12px;
+        font-size: 10px;
+        font-weight: 600;
+        text-align: center;
+        line-height: 1.15;
+    }
+    .nav-item > span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .nav-item.active { background: #EFF6FF; color: var(--primary); }
+    .nav-icon { font-size: 22px; line-height: 1.1; }
+    .header { padding: 12px 16px; }
+    .header-row { gap: 8px; }
+    .header-title { font-size: 20px; }
+    .header-user { font-size: 12px; gap: 8px; }
+    .content-area { padding: 12px 12px 96px; }
+    .card { padding: 14px; }
+    .inside-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .inside-time { grid-column: 1 / -1; order: 3; }
+    .inside-row .btn-danger { grid-column: 2; grid-row: 1; }
+    .inside-card { grid-template-columns: 1fr; }
+}

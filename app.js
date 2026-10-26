@@ -287,8 +287,8 @@
     const memberActive = active && !daily;
     const tabs = `
       <div class="mode-tabs">
-        <button class="mode-tab ${checkinMode === 'miembro' ? 'active' : ''}" data-mode="miembro">👤 Miembro</button>
-        <button class="mode-tab ${checkinMode === 'diario' ? 'active' : ''}" data-mode="diario">🎟️ Uso diario</button>
+        <button class="mode-tab ${checkinMode === 'miembro' ? 'active' : ''}" data-mode="miembro">👤 Membresía</button>
+        <button class="mode-tab ${checkinMode === 'diario' ? 'active' : ''}" data-mode="diario">🎟️ Diario</button>
       </div>`;
     const header = `
       <div class="flex-between">
@@ -439,24 +439,54 @@
     });
   }
 
+  let openEntriesList = [];
+
   async function loadOpenEntries() {
     if (currentView !== 'checkin') return;
     const { entries } = await api('GET', 'entries/open');
+    openEntriesList = entries;
     if (!entries.length) {
       $('openEntries').innerHTML = '<p class="muted">Nadie dentro en este momento.</p>';
       return;
     }
-    $('openEntries').innerHTML = `<table><thead><tr><th>Cliente</th><th>Entrada</th><th>Tiempo</th><th></th></tr></thead><tbody>${
+    $('openEntries').innerHTML = `<div class="inside-list">${
       entries.map((en) => {
         const mins = Math.round((Date.now() - en.check_in_at) / 60000);
-        return `<tr>
-          <td>${esc(en.full_name)}</td>
-          <td>${timeOf(en.check_in_at)}</td>
-          <td>${mins} min</td>
-          <td class="row-actions"><button class="btn btn-danger btn-small" data-out="${esc(en.id)}">Salida</button></td>
-        </tr>`;
+        return `<div class="inside-row">
+          <button class="inside-info" data-detail="${esc(en.id)}" title="Ver detalle">
+            <strong>${esc(en.full_name)}</strong>
+            <span class="muted">Entró ${timeOf(en.check_in_at)}</span>
+          </button>
+          <span class="inside-time">⏱ ${mins} min</span>
+          <button class="btn btn-danger btn-small" data-out="${esc(en.id)}">Salida</button>
+        </div>`;
       }).join('')
-    }</tbody></table>`;
+    }</div>`;
+  }
+
+  // Tarjeta de detalle de una persona dentro del gimnasio.
+  async function openInsideCard(en) {
+    const [{ client }, { entries: today }] = await Promise.all([
+      api('GET', 'clients/' + encodeURIComponent(en.client_id)),
+      api('GET', 'entries'),
+    ]);
+    const visitsToday = today.filter((x) => x.client_id === en.client_id).length;
+    const mins = Math.round((Date.now() - en.check_in_at) / 60000);
+    openModal(`
+      <div class="detail-title">${esc(client.full_name)}</div>
+      <div class="muted">Cédula ${esc(client.cedula || '–')} · Tel. ${esc(client.phone || '–')}</div>
+      <div class="inside-card">
+        <div class="inside-stat"><span class="muted">Hora de entrada</span><strong>${timeOf(en.check_in_at)}</strong></div>
+        <div class="inside-stat"><span class="muted">Tiempo adentro</span><strong>${mins} min</strong></div>
+        <div class="inside-stat"><span class="muted">Entradas hoy</span><strong>${visitsToday}</strong></div>
+        <div class="inside-stat"><span class="muted">Membresía</span><strong>${esc(client.membership_plan || 'Sin plan')}</strong></div>
+        <div class="inside-stat"><span class="muted">Estado</span>${badge(client.membership_status)}</div>
+        <div class="inside-stat"><span class="muted">Vence</span><strong>${client.membership_end ? fmtDate(client.membership_end) : '–'}</strong></div>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-danger" data-out-modal="${esc(en.id)}">Registrar salida</button>
+        <button class="btn btn-secondary" data-close-modal>Cerrar</button>
+      </div>`);
   }
 
   // -------------------------------------------------------------------------
@@ -995,10 +1025,30 @@
       openModal(clientFormHtml());
     });
     $('openEntries').addEventListener('click', async (e) => {
-      const id = e.target.dataset.out;
-      if (!id) return;
+      const outBtn = e.target.closest('[data-out]');
+      if (outBtn) {
+        try {
+          const r = await api('POST', `entries/${encodeURIComponent(outBtn.dataset.out)}/check-out`);
+          toast(`Salida registrada: ${r.entry.minutes} min`);
+          loadOpenEntries();
+        } catch (err) {
+          toast(err.message, false);
+        }
+        return;
+      }
+      const detail = e.target.closest('[data-detail]');
+      if (detail) {
+        const en = openEntriesList.find((x) => x.id === detail.dataset.detail);
+        if (en) openInsideCard(en).catch((err) => toast(err.message, false));
+      }
+    });
+    $('modalBox').addEventListener('click', async (e) => {
+      if (e.target.closest('[data-close-modal]')) { closeModal(); return; }
+      const b = e.target.closest('[data-out-modal]');
+      if (!b) return;
       try {
-        const r = await api('POST', `entries/${encodeURIComponent(id)}/check-out`);
+        const r = await api('POST', `entries/${encodeURIComponent(b.dataset.outModal)}/check-out`);
+        closeModal();
         toast(`Salida registrada: ${r.entry.minutes} min`);
         loadOpenEntries();
       } catch (err) {
