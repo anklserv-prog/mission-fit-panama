@@ -1034,6 +1034,21 @@ route('GET', /^settings$/, 'user', async ({ db }) => {
   return json({ settings });
 });
 
+// Reinicio de datos (solo creador), pensado para cuando termina la prueba Beta.
+// Borra clientes, membresías, pagos, entradas, ventas, cuentas e inventario.
+// Conserva usuarios, sesiones, planes y la configuración del gimnasio.
+route('POST', /^admin\/reset$/, 'creator', async ({ db, body }) => {
+  if (body.confirm !== 'REINICIAR') throw new HttpError(400, 'Escribe REINICIAR para confirmar el reinicio');
+  // Orden pensado para las llaves foráneas: primero lo que depende de otras tablas.
+  const tables = ['client_ledger', 'sale_items', 'stock_movements', 'payments', 'sales', 'memberships', 'entries', 'clients', 'products'];
+  const deleted = {};
+  for (const t of tables) {
+    deleted[t] = (await db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).first()).n;
+  }
+  await db.batch(tables.map((t) => db.prepare(`DELETE FROM ${t}`)));
+  return json({ ok: true, deleted });
+});
+
 route('PUT', /^settings$/, 'admin', async ({ db, body }) => {
   const stmts = [];
   for (const key of SETTING_KEYS) {
