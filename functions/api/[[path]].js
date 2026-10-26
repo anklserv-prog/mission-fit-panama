@@ -1090,6 +1090,12 @@ route('POST', /^clients\/([^/]+)\/card-open$/, 'admin', async ({ db, args }) => 
 // ---------------------------------------------------------------------------
 
 const PORTAL_SESSION_DAYS = 30;
+const PORTAL_MAX_ATTEMPTS = 3;
+const PORTAL_LOCK_MS = 15 * 60 * 1000;
+const lockedMessage = (until) => {
+  const mins = Math.max(1, Math.ceil((until - Date.now()) / 60000));
+  return `Demasiados intentos. Espera ${mins} minuto(s) o pide a la administración que restablezca tu acceso.`;
+};
 const normalizeCedula = (v) => String(v ?? '').trim().toUpperCase().replace(/\s+/g, '');
 
 // QR rotativo: cada minuto la tarjeta del socio cambia. El código lleva una firma HMAC con una clave del servidor,
@@ -1199,17 +1205,38 @@ route('POST', /^portal\/login$/, 'public', async ({ db, body }) => {
   const password = typeof body.password === 'string' ? body.password : '';
   if (!login || !password) throw new HttpError(400, 'Escribe tu cédula y tu contraseña');
   const row = await db.prepare(
-    `SELECT a.client_id, a.password_hash, a.salt, a.must_change
+    `SELECT a.client_id, a.password_hash, a.salt, a.must_change, a.failed_attempts, a.locked_until
        FROM clients c JOIN client_accounts a ON a.client_id = c.id
       WHERE UPPER(REPLACE(TRIM(c.cedula), ' ', '')) = ? AND a.active = 1 AND c.active = 1`,
   ).bind(login).first();
+
+  // Bloqueo: después de 3 intentos fallidos no se revisa la contraseña hasta que pase el tiempo
+  // o el administrador restablezca el acceso.
+  if (row?.locked_until && row.locked_until > Date.now()) throw new HttpError(429, lockedMessage(row.locked_until));
+
   const ok = row && await verifyPassword(password, row.password_hash, row.salt);
-  if (!ok) throw new HttpError(401, 'Cédula o contraseña incorrectas');
+  if (!ok) {
+    if (row) {
+      const fails = row.failed_attempts + 1;
+      if (fails >= PORTAL_MAX_ATTEMPTS) {
+        const until = Date.now() + PORTAL_LOCK_MS;
+        await db.prepare('UPDATE client_accounts SET failed_attempts = 0, locked_until = ? WHERE client_id = ?')
+          .bind(until, row.client_id).run();
+        throw new HttpError(429, lockedMessage(until));
+      }
+      await db.prepare('UPDATE client_accounts SET failed_attempts = ? WHERE client_id = ?')
+        .bind(fails, row.client_id).run();
+      throw new HttpError(401, `Cédula o contraseña incorrectas. Te quedan ${PORTAL_MAX_ATTEMPTS - fails} intento(s).`);
+    }
+    throw new HttpError(401, 'Cédula o contraseña incorrectas');
+  }
+
   const token = randomToken();
   await db.batch([
     db.prepare('INSERT INTO client_sessions (token_hash, client_id, expires_at) VALUES (?, ?, ?)')
       .bind(await sha256Hex(token), row.client_id, Date.now() + PORTAL_SESSION_DAYS * 86400000),
-    db.prepare("UPDATE client_accounts SET last_login = datetime('now') WHERE client_id = ?").bind(row.client_id),
+    db.prepare("UPDATE client_accounts SET last_login = datetime('now'), failed_attempts = 0, locked_until = NULL WHERE client_id = ?")
+      .bind(row.client_id),
   ]);
   return json({ token, must_change: row.must_change === 1 });
 });
@@ -1258,7 +1285,7 @@ route('POST', /^clients\/([^/]+)\/portal-access$/, 'admin', async ({ db, args })
       `INSERT INTO client_accounts (client_id, password_hash, salt, must_change, active)
        VALUES (?, ?, ?, 1, 1)
        ON CONFLICT(client_id) DO UPDATE SET password_hash = excluded.password_hash,
-         salt = excluded.salt, must_change = 1, active = 1`,
+         salt = excluded.salt, must_change = 1, active = 1, failed_attempts = 0, locked_until = NULL`,
     ).bind(client.id, hash, salt),
     db.prepare('DELETE FROM client_sessions WHERE client_id = ?').bind(client.id),
   ]);
