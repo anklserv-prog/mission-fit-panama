@@ -315,6 +315,15 @@ route('GET', /^clients\/code\/([^/]+)$/, 'user', async ({ db, user, args }) => {
   return json({ ...p, client: maskCard(user, p.client) });
 });
 
+// Escáner de entrada: acepta el QR rotativo del portal (y la tarjeta fija, según la configuración).
+route('GET', /^scan\/([^/]+)$/, 'user', async ({ db, user, args }) => {
+  const code = await resolveScan(db, decodeURIComponent(args[0]));
+  const row = await db.prepare('SELECT id FROM clients WHERE code = ? AND active = 1').bind(code).first();
+  if (!row) throw new HttpError(404, 'Código de cliente no encontrado');
+  const p = await clientPayload(db, row.id);
+  return json({ ...p, client: maskCard(user, p.client) });
+});
+
 route('GET', /^clients\/([^/]+)$/, 'user', async ({ db, user, args }) => {
   const p = await clientPayload(db, args[0]);
   return json({ ...p, client: maskCard(user, p.client) });
@@ -1042,7 +1051,7 @@ route('GET', /^reports\/detail$/, 'admin', async ({ db, url }) => {
   throw new HttpError(400, 'Tipo de reporte desconocido');
 });
 
-const SETTING_KEYS = ['gym_name', 'contact_email', 'phone', 'whatsapp', 'currency', 'schedule'];
+const SETTING_KEYS = ['gym_name', 'contact_email', 'phone', 'whatsapp', 'currency', 'schedule', 'rotating_qr'];
 
 route('GET', /^settings$/, 'user', async ({ db }) => {
   const { results } = await db.prepare('SELECT key, value FROM settings').all();
@@ -1082,6 +1091,56 @@ route('POST', /^clients\/([^/]+)\/card-open$/, 'admin', async ({ db, args }) => 
 
 const PORTAL_SESSION_DAYS = 30;
 const normalizeCedula = (v) => String(v ?? '').trim().toUpperCase().replace(/\s+/g, '');
+
+// QR rotativo: cada minuto la tarjeta del socio cambia. El código lleva una firma HMAC con una clave del servidor,
+// así que una captura de pantalla vale como mucho dos minutos (el minuto actual y el anterior).
+const ROTATION_MS = 60000;
+const enc = new TextEncoder();
+
+async function qrSecret(db) {
+  await db.prepare("INSERT OR IGNORE INTO app_keys (name, value) VALUES ('qr_secret', ?)").bind(randomToken()).run();
+  return (await db.prepare("SELECT value FROM app_keys WHERE name = 'qr_secret'").first()).value;
+}
+
+async function qrSignature(db, code, slot) {
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(await qrSecret(db)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(`${code}.${slot}`)));
+  return [...sig].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+}
+
+// Tarjeta rotativa del socio: el texto del QR y los milisegundos que faltan para el siguiente cambio.
+async function rotatingCard(db, code) {
+  const now = Date.now();
+  const slot = Math.floor(now / ROTATION_MS);
+  return {
+    token: `MF1.${code}.${slot}.${await qrSignature(db, code, slot)}`,
+    next_ms: (slot + 1) * ROTATION_MS - now,
+  };
+}
+
+// Traduce lo que lee el escáner a un código de cliente.
+// Con rotating_qr = '1' la tarjeta fija deja de servir: solo vale el QR rotativo del portal.
+async function resolveScan(db, raw) {
+  const text = String(raw ?? '').trim();
+  const m = text.match(/^MF1\.(MF-[A-Z0-9]{6})\.(\d+)\.([0-9a-f]{16})$/i);
+  if (m) {
+    const code = m[1].toUpperCase();
+    const slot = Number(m[2]);
+    const current = Math.floor(Date.now() / ROTATION_MS);
+    if (slot !== current && slot !== current - 1) {
+      throw new HttpError(410, 'QR caducado. Pide al socio que actualice su tarjeta del portal.');
+    }
+    if (m[3].toLowerCase() !== await qrSignature(db, code, slot)) throw new HttpError(400, 'QR no válido');
+    return code;
+  }
+  const setting = await db.prepare("SELECT value FROM settings WHERE key = 'rotating_qr'").first();
+  if (setting?.value === '1') {
+    throw new HttpError(400, 'Esta tarjeta ya no es válida. El socio debe usar el QR de su portal.');
+  }
+  return text.toUpperCase();
+}
 
 // Contraseña temporal legible (sin letras confundibles como O/0 o I/1).
 function tempPassword() {
@@ -1130,7 +1189,7 @@ async function portalPayload(db, clientId, mustChange) {
       end_date: m?.end_date ?? null,
       days_left: m?.end_date ? daysBetween(m.end_date, today) : null,
     },
-    card: showCard ? { code: client.code } : null,
+    card: showCard ? await rotatingCard(db, client.code) : null,
     gym: { name: gym.gym_name || '', phone: gym.phone || '', whatsapp: gym.whatsapp || '', schedule: gym.schedule || '' },
   };
 }
