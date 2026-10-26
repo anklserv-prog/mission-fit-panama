@@ -401,3 +401,7 @@ button, a, label, input, select, textarea, .nav-item, .mode-tab, .pcard, .cat-ta
 
 /* Botones deshabilitados: se ven apagados para no confundir con los activos. */
 .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Tablas de detalle de reportes: más compactas para que quepan en la ventana. */
+.detail-table-wrap table { font-size: 13px; }
+.detail-table-wrap th, .detail-table-wrap td { padding: 6px 8px; vertical-align: top; }

@@ -152,6 +152,7 @@
     stopScanner();
     $('modal').classList.remove('active');
     $('modalBox').innerHTML = '';
+    $('modalBox').style.maxWidth = '';
   }
   function formData(form) {
     return Object.fromEntries(new FormData(form).entries());
@@ -1081,7 +1082,12 @@
       return w.every((term) => hay.includes(norm(term)));
     };
     let shown = r.rows;
-    const cellHtml = (v, i) => (moneyCols.includes(r.columns[i]) ? money(v) : esc(v ?? ''));
+    // Fechas ISO (2026-10-23) se muestran como 23/10/2026; montos con formato de dinero.
+    const cellHtml = (v, i) => {
+      if (moneyCols.includes(r.columns[i])) return money(v);
+      if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return fmtDate(v);
+      return esc(v ?? '');
+    };
     const renderBody = () => {
       const w = words();
       shown = w.length ? r.rows.filter((row) => matches(row, w)) : r.rows;
@@ -1108,6 +1114,8 @@
         <button class="btn btn-secondary" data-close-modal>Cerrar</button>
       </div>`);
     if (r.rows.length) {
+      // Ventana más ancha para que las tablas quepan sin deslizar a los lados.
+      $('modalBox').style.maxWidth = 'min(1040px, 96vw)';
       $('detailSearch').addEventListener('input', renderBody);
       renderBody();
     }
