@@ -813,6 +813,7 @@
       ? `<div class="client-chip ${posClient.balance > 0.005 ? 'debt' : ''}">
            <div><strong>👤 ${esc(posClient.full_name)}</strong>
              <div class="muted">Saldo pendiente: ${money(posClient.balance)}</div></div>
+           ${posClient.balance > 0.005 ? '<button class="btn btn-success btn-small" data-pay-debt>💵 Cobrar saldo</button>' : ''}
            <button class="btn btn-secondary btn-small" data-clear-client>Quitar</button>
          </div>`
       : '<p class="muted" style="margin-top:6px;">Sin cliente: venta de mostrador.</p>';
@@ -1091,7 +1092,8 @@
     const renderBody = () => {
       const w = words();
       shown = w.length ? r.rows.filter((row) => matches(row, w)) : r.rows;
-      $('detailBody').innerHTML = shown.map((row) => `<tr>${row.map((v, i) => `<td>${cellHtml(v, i)}</td>`).join('')}</tr>`).join('')
+      const codeIdx = r.columns.indexOf('Código');
+      $('detailBody').innerHTML = shown.map((row) => `<tr${codeIdx >= 0 && row[codeIdx] ? ` class="clickable" data-code="${esc(row[codeIdx])}" title="Abrir ficha para cobrar"` : ''}>${row.map((v, i) => `<td>${cellHtml(v, i)}</td>`).join('')}</tr>`).join('')
         || `<tr><td colspan="${r.columns.length}" class="muted">Ningún registro coincide con la búsqueda.</td></tr>`;
       const total = moneyIdx >= 0 ? shown.reduce((s, row) => s + Number(row[moneyIdx] || 0), 0) : null;
       $('detailCount').textContent = `${shown.length} de ${r.rows.length} registro${r.rows.length === 1 ? '' : 's'}`
@@ -1113,6 +1115,16 @@
         <button class="btn btn-success" id="detailXlsx" ${r.rows.length ? '' : 'disabled'}>📥 Descargar Excel</button>
         <button class="btn btn-secondary" data-close-modal>Cerrar</button>
       </div>`);
+    // En "Saldo pendiente": tocar un cliente abre su ficha, donde se registra el abono.
+    $('detailBody')?.addEventListener('click', async (e) => {
+      const tr = e.target.closest('tr[data-code]');
+      if (!tr) return;
+      try {
+        const { client } = await api('GET', 'clients/code/' + encodeURIComponent(tr.dataset.code));
+        closeModal();
+        clientDetail(client.id).catch((err) => toast(err.message, false));
+      } catch (err) { toast(err.message, false); }
+    });
     if (r.rows.length) {
       // Ventana más ancha para que las tablas quepan sin deslizar a los lados.
       $('modalBox').style.maxWidth = 'min(1040px, 96vw)';
@@ -1764,6 +1776,9 @@
     });
     $('posClientInfo').addEventListener('click', (e) => {
       if (e.target.dataset.clearClient !== undefined) { posClient = null; renderCart(); }
+      if (e.target.dataset.payDebt !== undefined && posClient) {
+        clientDetail(posClient.id).catch((err) => toast(err.message, false));
+      }
     });
     $('posMethod').addEventListener('change', renderCart);
     $('posCharge').addEventListener('click', (e) => chargeSale(e.currentTarget));
