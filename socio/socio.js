@@ -52,6 +52,55 @@
     return qr.createDataURL(6, 2);
   }
 
+  // QR rotativo: el código cambia cada minuto. La página pide el nuevo justo al cambio de minuto.
+  let cardTimer = null;
+  let tickTimer = null;
+  let cardEndsAt = 0;
+
+  function stopCardTimers() {
+    clearTimeout(cardTimer);
+    clearInterval(tickTimer);
+    cardTimer = null;
+    tickTimer = null;
+  }
+
+  function paintCard(card) {
+    stopCardTimers();
+    $('qrWrap').hidden = false;
+    $('noCard').hidden = true;
+    $('qrImg').src = qrDataUrl(card.token);
+    cardEndsAt = Date.now() + card.next_ms;
+    const tick = () => {
+      const secs = Math.max(0, Math.ceil((cardEndsAt - Date.now()) / 1000));
+      $('qrCode').textContent = `Se renueva en ${secs} s`;
+    };
+    tick();
+    tickTimer = setInterval(tick, 1000);
+    cardTimer = setTimeout(refreshCard, card.next_ms + 300);
+  }
+
+  // Pide el QR del minuto actual. Si no hay conexión, reintenta en 5 segundos.
+  async function refreshCard() {
+    try {
+      const d = await call('GET', 'portal/me');
+      if (d.must_change) { showView('password'); return; }
+      renderHome(d);
+    } catch (err) {
+      if (err.status === 401) {
+        setToken('');
+        showLogin('Tu sesión venció. Vuelve a ingresar.');
+        return;
+      }
+      clearInterval(tickTimer);
+      cardTimer = setTimeout(refreshCard, 5000);
+    }
+  }
+
+  // Al volver a abrir la pantalla (el celular estaba bloqueado) se pide el QR actual sin esperar.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && !$('qrWrap').hidden && Date.now() >= cardEndsAt - 500) refreshCard();
+  });
+
   function renderHome(d) {
     const first = String(d.client?.name || '').split(' ')[0];
     $('greet').textContent = first ? `Hola, ${first}` : 'Hola';
@@ -64,12 +113,10 @@
     if (m.status === 'por_vencer' && m.days_left != null) planText += ` · faltan ${m.days_left} día(s)`;
     $('plan').textContent = planText;
 
-    if (d.card?.code) {
-      $('qrWrap').hidden = false;
-      $('noCard').hidden = true;
-      $('qrImg').src = qrDataUrl(d.card.code);
-      $('qrCode').textContent = d.card.code;
+    if (d.card?.token) {
+      paintCard(d.card);
     } else {
+      stopCardTimers();
       $('qrWrap').hidden = true;
       $('noCard').hidden = false;
       $('qrImg').removeAttribute('src');
@@ -107,6 +154,7 @@
   }
 
   function showLogin(message) {
+    stopCardTimers();
     const el = $('loginError');
     el.textContent = message || '';
     el.hidden = !message;
