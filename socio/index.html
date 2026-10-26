@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>Portal del socio · Mission Fit</title>
+  <link rel="icon" href="/img/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/img/icon-192.png">
+  <link rel="stylesheet" href="/socio/socio.css">
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <img src="/img/icon.svg" alt="" class="logo">
+      <div>
+        <div class="brand" id="gymName">Mission Fit Panamá</div>
+        <div class="muted small">Portal del socio</div>
+      </div>
+    </header>
+
+    <!-- Ingreso -->
+    <section data-view="login" class="panel" hidden>
+      <h1>Ingresa</h1>
+      <p class="muted">Usa tu cédula y la contraseña que te entregó el gimnasio.</p>
+      <form id="loginForm" novalidate>
+        <label>Cédula
+          <input name="cedula" autocomplete="username" autocapitalize="characters" required>
+        </label>
+        <label>Contraseña
+          <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <p class="error" id="loginError" hidden></p>
+        <button class="btn primary" type="submit">Ingresar</button>
+      </form>
+    </section>
+
+    <!-- Cambio de contraseña (primer ingreso o restablecida por el gimnasio) -->
+    <section data-view="password" class="panel" hidden>
+      <h1>Crea tu contraseña</h1>
+      <p class="muted">Por seguridad, cambia la contraseña temporal por una propia (mínimo 8 caracteres).</p>
+      <form id="passwordForm" novalidate>
+        <label>Contraseña temporal
+          <input name="current" type="password" autocomplete="current-password" required>
+        </label>
+        <label>Nueva contraseña
+          <input name="password" type="password" autocomplete="new-password" minlength="8" required>
+        </label>
+        <label>Repite la nueva contraseña
+          <input name="confirm" type="password" autocomplete="new-password" minlength="8" required>
+        </label>
+        <p class="error" id="passwordError" hidden></p>
+        <button class="btn primary" type="submit">Guardar y continuar</button>
+      </form>
+    </section>
+
+    <!-- Inicio: tarjeta de acceso -->
+    <section data-view="home" hidden>
+      <h1 id="greet">Hola</h1>
+
+      <div class="panel membership">
+        <div class="row">
+          <span id="status" class="pill">—</span>
+        </div>
+        <p id="plan" class="muted"></p>
+      </div>
+
+      <div class="panel card-access" id="cardPanel">
+        <h2>Tu tarjeta de acceso</h2>
+        <div id="qrWrap">
+          <img id="qrImg" alt="Código QR de tu tarjeta de acceso">
+          <p class="code" id="qrCode"></p>
+          <p class="muted small">Muestra este código en recepción al entrar.</p>
+        </div>
+        <p id="noCard" class="notice" hidden>
+          Tu membresía no está activa. Renuévala en recepción para volver a ver tu tarjeta de acceso.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h2>Horario</h2>
+        <p id="schedule" class="muted">Consulta el horario en recepción.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Contacto</h2>
+        <div class="actions">
+          <a id="callBtn" class="btn ghost" href="#" hidden>📞 Llamar</a>
+          <a id="waBtn" class="btn ghost" href="#" target="_blank" rel="noopener" hidden>💬 WhatsApp</a>
+        </div>
+      </div>
+
+      <button id="logoutBtn" class="btn link" type="button">Cerrar sesión</button>
+    </section>
+
+    <section data-view="loading" class="panel center" hidden>
+      <p class="muted">Cargando…</p>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="/vendor/qrcode.js"></script>
+  <script src="/socio/socio.js"></script>
+</body>
+</html>
