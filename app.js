@@ -65,6 +65,7 @@
   let currentView = 'dashboard';
   let openTimer = null;
   let searchTimer = null;
+  let newClientFrom = null; // 'checkin' cuando el cliente nuevo se crea desde el check-in
 
   // -------------------------------------------------------------------------
   // Utilidades
@@ -258,29 +259,73 @@
       </div>`).join('') || '<p class="muted">Sin resultados.</p>';
   }
 
+  // Check-in con dos pestañas: Miembro (membresía) y Uso diario (cobro del día, sin membresía).
+  let checkinClient = null;
+  let checkinMode = 'miembro';
+
+  const isDailyPlanName = (name) => plans.some((p) => p.name === name && p.duration_days === 1);
+  const dailyPlan = () => plans.find((p) => p.duration_days === 1);
+  const methodSelectOptions = () => Object.entries(METHOD_LABEL)
+    .filter(([v]) => v !== 'cuenta')
+    .map(([v, l]) => `<option value="${v}">${v === 'yapi' ? 'Yappy' : l}</option>`).join('');
+
   async function showClientCheckin(id) {
     const { client } = await api('GET', 'clients/' + encodeURIComponent(id));
+    checkinClient = client;
+    const paidDailyToday = isDailyPlanName(client.membership_plan)
+      && (client.membership_status === 'activa' || client.membership_status === 'por_vencer');
+    checkinMode = paidDailyToday ? 'diario' : 'miembro';
+    renderCheckin();
+    $('ciDetail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function renderCheckin() {
+    const client = checkinClient;
     const st = client.membership_status;
     const active = st === 'activa' || st === 'por_vencer';
+    const daily = isDailyPlanName(client.membership_plan);
+    const memberActive = active && !daily;
+    const tabs = `
+      <div class="mode-tabs">
+        <button class="mode-tab ${checkinMode === 'miembro' ? 'active' : ''}" data-mode="miembro">👤 Miembro</button>
+        <button class="mode-tab ${checkinMode === 'diario' ? 'active' : ''}" data-mode="diario">🎟️ Uso diario</button>
+      </div>`;
+    const header = `
+      <div class="flex-between">
+        <div>
+          <div class="detail-title">${esc(client.full_name)}</div>
+          <div class="muted">Cédula ${esc(client.cedula || '–')} · Tel. ${esc(client.phone || '–')}</div>
+        </div>
+        ${badge(st)}
+      </div>`;
+
+    $('ciDetail').style.display = 'block';
+    $('ciDetail').innerHTML = header + tabs +
+      (checkinMode === 'miembro'
+        ? miembroPanel(client, st, active, daily, memberActive)
+        : diarioPanel(client, active, daily, memberActive));
+    bindCheckinPanel();
+  }
+
+  function miembroPanel(client, st, active, daily, memberActive) {
     const endTxt = fmtDate(client.membership_end);
-
     // Estado de la membresía: cada caso se ve distinto para no confundir a recepción.
-    const statusBox = {
-      activa: `<div class="status-box ok">✅ <strong>Membresía activa</strong> hasta el ${endTxt}${client.membership_plan ? ` · ${esc(client.membership_plan)}` : ''}</div>`,
-      por_vencer: `<div class="status-box warn">⚠️ <strong>Membresía por vencer</strong>: vence el ${endTxt}. Renueva para seguir entrando.</div>`,
-      vencida: `<div class="status-box off">⛔ <strong>Membresía vencida</strong> desde el ${endTxt}. No puede entrar hasta renovar.</div>`,
-      sin_membresia: '<div class="status-box off">⛔ <strong>Sin membresía</strong>. Debe cobrar una membresía para entrar.</div>',
-    }[st] || '';
+    const statusBox = daily && active
+      ? '<div class="status-box ok">🎟️ <strong>Uso diario pagado hoy</strong>. Puede entrar.</div>'
+      : ({
+        activa: `<div class="status-box ok">✅ <strong>Membresía activa</strong> hasta el ${endTxt}${client.membership_plan ? ` · ${esc(client.membership_plan)}` : ''}</div>`,
+        por_vencer: `<div class="status-box warn">⚠️ <strong>Membresía por vencer</strong>: vence el ${endTxt}. Renueva para seguir entrando.</div>`,
+        vencida: `<div class="status-box off">⛔ <strong>Membresía vencida</strong> desde el ${endTxt}. No puede entrar hasta renovar.</div>`,
+        sin_membresia: '<div class="status-box off">⛔ <strong>Sin membresía</strong>. Debe cobrar una membresía para entrar.</div>',
+      }[st] || '');
 
-    const planOptions = plans.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} — ${money(p.price)}</option>`).join('');
-    const methodOptions = Object.entries(METHOD_LABEL)
-      .filter(([v]) => v !== 'cuenta')
-      .map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+    const planOptions = plans.filter((p) => p.duration_days !== 1)
+      .map((p) => `<option value="${esc(p.id)}">${esc(p.name)} — ${money(p.price)}</option>`).join('');
     const renewLabel = active ? '🔁 Renovar' : '💳 Cobrar y activar';
     const renewForm = `
       <div class="form-row">
         <div class="form-group"><label>Plan:</label><select id="renewPlan">${planOptions}</select></div>
-        <div class="form-group"><label>Método:</label><select id="renewMethod">${methodOptions}</select></div>
+        <div class="form-group"><label>Método:</label><select id="renewMethod">${methodSelectOptions()}</select></div>
       </div>
       <div class="form-row ref-box" id="renewRefBox" style="display:none;">
         <div class="form-group" style="grid-column:1 / -1;"><label>Código de transacción de Yappy:</label><input id="renewRef" class="wide-input" autocomplete="off" placeholder="Ej: 1A2B3C4D"></div>
@@ -288,31 +333,46 @@
       <div class="btn-group"><button class="btn btn-primary" id="renewBtn">${renewLabel}</button></div>`;
 
     let renewSection;
-    if (st === 'activa') {
+    if (memberActive && st === 'activa') {
       renewSection = `<details class="renew-details"><summary>🔁 Renovar por adelantado</summary>${renewForm}</details>`;
-    } else if (st === 'por_vencer') {
+    } else if (memberActive) {
       renewSection = `<div class="card-title" style="margin-bottom:12px;">🔁 Renovar membresía</div>${renewForm}`;
     } else {
       renewSection = `<div class="card-title" style="margin-bottom:12px;">💳 Cobrar membresía</div>${renewForm}`;
     }
 
-    $('ciDetail').style.display = 'block';
-    $('ciDetail').innerHTML = `
-      <div class="flex-between">
-        <div>
-          <div class="detail-title">${esc(client.full_name)}</div>
-          <div class="muted">Cédula ${esc(client.cedula || '–')} · Tel. ${esc(client.phone || '–')}</div>
-        </div>
-        ${badge(st)}
-      </div>
+    return `
       ${statusBox}
       <div class="btn-group">
         <button class="btn btn-success" id="ciEnter" ${active ? '' : 'disabled'}>✓ Registrar entrada</button>
       </div>
-      ${active ? '' : '<p class="muted" style="margin-top:8px;">Para entrar, primero debe cobrar la membresía.</p>'}
+      ${active ? '' : '<p class="muted" style="margin-top:8px;">Para entrar, primero debe cobrar la membresía o el uso diario.</p>'}
       <hr class="detail-divider">
-      ${renewSection}
-    `;
+      ${renewSection}`;
+  }
+
+  function diarioPanel(client, active, daily, memberActive) {
+    if (memberActive) {
+      return `<div class="status-box warn" style="margin-top:12px;">⛔ <strong>Tiene membresía activa</strong>. El uso diario no aplica; el ingreso se registra desde la pestaña Miembro.</div>`;
+    }
+    if (daily && active) {
+      return `
+        <div class="btn-group" style="margin-top:12px;"><button class="btn btn-success" id="ciEnter">✓ Registrar entrada</button></div>`;
+    }
+    const dp = dailyPlan();
+    return `
+      <div class="status-box off" style="margin-top:12px;">🎟️ <strong>Uso diario</strong>: cobra el día${dp ? ` (${money(dp.price)})` : ''} y registra la entrada.</div>
+      <div class="form-row" style="margin-top:12px;">
+        <div class="form-group"><label>Método:</label><select id="dailyMethod">${methodSelectOptions()}</select></div>
+      </div>
+      <div class="form-row ref-box" id="dailyRefBox" style="display:none;">
+        <div class="form-group" style="grid-column:1 / -1;"><label>Código de transacción de Yappy:</label><input id="dailyRef" class="wide-input" autocomplete="off" placeholder="Ej: 1A2B3C4D"></div>
+      </div>
+      <div class="btn-group"><button class="btn btn-primary" id="dailyBtn" ${dp ? '' : 'disabled'}>🎟️ Cobrar y registrar entrada</button></div>`;
+  }
+
+  function bindCheckinPanel() {
+    const client = checkinClient;
 
     // Guardar el botón antes de cualquier await: e.currentTarget queda en null después.
     $('ciEnter')?.addEventListener('click', async (e) => {
@@ -330,10 +390,10 @@
       }
     });
 
-    $('renewMethod').addEventListener('change', () => {
+    $('renewMethod')?.addEventListener('change', () => {
       $('renewRefBox').style.display = $('renewMethod').value === 'yapi' ? '' : 'none';
     });
-    $('renewBtn').addEventListener('click', async (e) => {
+    $('renewBtn')?.addEventListener('click', async (e) => {
       const btn = e.currentTarget;
       setBusy(btn, true);
       try {
@@ -352,7 +412,31 @@
       }
     });
 
-    $('ciDetail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    $('dailyMethod')?.addEventListener('change', () => {
+      $('dailyRefBox').style.display = $('dailyMethod').value === 'yapi' ? '' : 'none';
+    });
+    $('dailyBtn')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      setBusy(btn, true);
+      try {
+        const dp = dailyPlan();
+        await api('POST', 'memberships', {
+          client_id: client.id,
+          plan_id: dp.id,
+          method: $('dailyMethod').value,
+          reference: $('dailyRef').value,
+        });
+        await api('POST', 'entries/check-in', { client_id: client.id });
+        toast(`✓ Uso diario cobrado y entrada registrada: ${client.full_name}`);
+        loadOpenEntries();
+        showClientCheckin(client.id);
+      } catch (err) {
+        toast(err.message, false);
+        showClientCheckin(client.id).catch(() => {});
+      } finally {
+        setBusy(btn, false);
+      }
+    });
   }
 
   async function loadOpenEntries() {
@@ -899,6 +983,17 @@
       const row = e.target.closest('.result-row');
       if (row) showClientCheckin(row.dataset.id).catch((err) => toast(err.message, false));
     });
+    $('ciDetail').addEventListener('click', (e) => {
+      const tab = e.target.closest('[data-mode]');
+      if (!tab || !checkinClient) return;
+      checkinMode = tab.dataset.mode;
+      renderCheckin();
+    });
+    // Cliente nuevo desde el check-in: al guardarlo, queda listo para entrar o cobrar.
+    $('ciNewClient').addEventListener('click', () => {
+      newClientFrom = 'checkin';
+      openModal(clientFormHtml());
+    });
     $('openEntries').addEventListener('click', async (e) => {
       const id = e.target.dataset.out;
       if (!id) return;
@@ -1064,9 +1159,15 @@
           toast('Cliente guardado');
           closeModal();
           loadClients();
-          // Un cliente nuevo pasa directo a su ficha para cobrarle la membresía.
+          // Un cliente nuevo pasa directo a su ficha, o al check-in si se creó desde ahí.
           if (!form.dataset.id && saved.client?.id) {
-            clientDetail(saved.client.id).catch((err) => toast(err.message, false));
+            if (newClientFrom === 'checkin') {
+              newClientFrom = null;
+              go('checkin');
+              showClientCheckin(saved.client.id).catch((err) => toast(err.message, false));
+            } else {
+              clientDetail(saved.client.id).catch((err) => toast(err.message, false));
+            }
           }
         } else if (form.id === 'productForm') {
           if (form.dataset.id) {

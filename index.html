@@ -102,7 +102,10 @@
                 <div id="checkinView" class="view">
                     <div class="card">
                         <div class="card-title"><span class="card-title-icon">🔍</span> Buscar cliente</div>
-                        <input type="search" id="ciSearch" class="wide-input" placeholder="Nombre, cédula o teléfono...">
+                        <div class="toolbar">
+                            <input type="search" id="ciSearch" class="wide-input" placeholder="Nombre, cédula o teléfono...">
+                            <button class="btn btn-secondary" id="ciNewClient">➕ Nuevo cliente</button>
+                        </div>
                         <div id="ciResults" class="results"></div>
                     </div>
                     <div class="card" id="ciDetail" style="display:none;"></div>

@@ -219,6 +219,22 @@
 
 .renew-details summary { cursor: pointer; font-weight: 600; margin-bottom: 12px; }
 
+/* Pestañas del check-in: Miembro / Uso diario */
+.mode-tabs { display: flex; gap: 8px; margin-top: 14px; }
+.mode-tab {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    background: white;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.mode-tab.active { background: var(--primary); border-color: var(--primary); color: white; }
+
 .amt-debit { color: var(--danger); font-weight: 600; white-space: nowrap; }
 
 /* Logo de Yappy junto al método de pago */
