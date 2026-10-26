@@ -397,4 +397,4 @@
 .sale-amt { display: flex; flex-direction: column; align-items: flex-end; font-size: 14px; }
 
 /* Evita el zoom de Safari (iPad/iPhone) por doble toque al tocar botones y tarjetas. El pellizco para hacer zoom sigue funcionando. */
-* { touch-action: manipulation; }
+button, a, label, input, select, textarea, .nav-item, .mode-tab, .pcard, .cat-tab, .result-row, .sale-row, .clickable, .stat-card, .inside-info { touch-action: manipulation; }

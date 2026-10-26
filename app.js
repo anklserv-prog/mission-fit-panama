@@ -1136,7 +1136,11 @@
         video.setAttribute('muted', '');
         video.muted = true;
         video.srcObject = stream;
-        video.play().catch(() => {});
+        // Safari (iPad) puede bloquear la reproducción automática: en ese caso se pide tocar el video.
+        video.play().catch(() => {
+          if ($('scanHint')) $('scanHint').textContent = 'Toca la imagen de la cámara para activarla.';
+          video.addEventListener('click', () => video.play().catch(() => {}), { once: true });
+        });
         const readFrame = makeReader(video);
         scanTimer = setInterval(readFrame, 300);
         $('scanHint').textContent = 'Apunta la cámara al QR de la tarjeta del cliente.';
