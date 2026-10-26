@@ -1037,6 +1037,18 @@ route('GET', /^settings$/, 'user', async ({ db }) => {
 // Reinicio de datos (solo creador), pensado para cuando termina la prueba Beta.
 // Borra clientes, membresías, pagos, entradas, ventas, cuentas e inventario.
 // Conserva usuarios, sesiones, planes y la configuración del gimnasio.
+// Envío de la tarjeta por WhatsApp. El cajero (recepción) solo puede enviarla una vez por cliente;
+// administrador y creador pueden enviarla sin límite.
+route('POST', /^clients\/([^/]+)\/card-share$/, 'user', async ({ db, user, args }) => {
+  const client = await db.prepare('SELECT id, card_shares FROM clients WHERE id = ? AND active = 1').bind(args[0]).first();
+  if (!client) throw new HttpError(404, 'Cliente no encontrado');
+  if (ROLE_RANK[user.role] < ROLE_RANK.admin && client.card_shares >= 1) {
+    throw new HttpError(403, 'Esta tarjeta ya se envió. Solo el administrador puede enviar otra copia.');
+  }
+  await db.prepare('UPDATE clients SET card_shares = card_shares + 1 WHERE id = ?').bind(client.id).run();
+  return json({ card_shares: client.card_shares + 1 });
+});
+
 route('POST', /^admin\/reset$/, 'creator', async ({ db, body }) => {
   if (body.confirm !== 'REINICIAR') throw new HttpError(400, 'Escribe REINICIAR para confirmar el reinicio');
   // Orden pensado para las llaves foráneas: primero lo que depende de otras tablas.
