@@ -654,6 +654,10 @@
       <p class="muted">Cédula ${esc(client.cedula || '–')} · Tel. ${esc(client.phone || '–')} · ${esc(client.email || '')}</p>
       <p style="margin-top:8px;">Estado: ${badge(client.membership_status)} · Plan: <strong>${esc(client.membership_plan || '—')}</strong> · Vence: <strong>${fmtDate(client.membership_end)}</strong></p>
       <hr class="detail-divider">
+      <div class="card-title" style="font-size:15px;">🔐 Portal del socio</div>
+      <p class="muted">El socio entra con su cédula y su contraseña para ver su tarjeta y el horario. Al crear o restablecer el acceso se genera una contraseña temporal.</p>
+      ${client.cedula ? `<div class="btn-group"><button class="btn btn-secondary btn-small" data-portal-access>🔑 Crear o restablecer acceso</button></div><div id="portalResult"></div>` : '<p class="muted">Agrega la cédula del cliente para darle acceso al portal.</p>'}
+      <hr class="detail-divider">
       <div class="card-title" style="font-size:15px;">🪪 Tarjeta del cliente</div>
       ${client.code ? `
       <div class="client-card-box">
@@ -1730,6 +1734,19 @@
     });
     $('modalBox').addEventListener('click', async (e) => {
       if (e.target.closest('[data-close-modal]')) { closeModal(); return; }
+      if (e.target.closest('[data-portal-access]') && cardClient) {
+        const btn = e.target.closest('[data-portal-access]');
+        setBusy(btn, true);
+        try {
+          const r = await api('POST', 'clients/' + encodeURIComponent(cardClient.id) + '/portal-access');
+          $('portalResult').innerHTML = `<div class="status-box ok">Cédula: <strong>${esc(r.login)}</strong><br>Contraseña temporal: <strong class="client-code">${esc(r.password)}</strong><br><span class="muted">Entrégasela al socio. La cambiará en su primer ingreso. No se volverá a mostrar.</span></div>`;
+        } catch (err) {
+          toast(err.message, false);
+        } finally {
+          setBusy(btn, false);
+        }
+        return;
+      }
       if (e.target.closest('[data-card-download]') && cardClient) {
         const snap = { ...cardClient };
         if (!(await consumeCard(cardClient))) return;
