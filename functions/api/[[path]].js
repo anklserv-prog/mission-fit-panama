@@ -40,6 +40,7 @@ export async function onRequest({ request, env, params }) {
     const ctx = {
       db: env.DB,
       env,
+      request,
       url: new URL(request.url),
       args,
       user: null,
@@ -1041,7 +1042,7 @@ route('GET', /^reports\/detail$/, 'admin', async ({ db, url }) => {
   throw new HttpError(400, 'Tipo de reporte desconocido');
 });
 
-const SETTING_KEYS = ['gym_name', 'contact_email', 'phone', 'whatsapp', 'currency'];
+const SETTING_KEYS = ['gym_name', 'contact_email', 'phone', 'whatsapp', 'currency', 'schedule'];
 
 route('GET', /^settings$/, 'user', async ({ db }) => {
   const { results } = await db.prepare('SELECT key, value FROM settings').all();
@@ -1073,10 +1074,142 @@ route('POST', /^clients\/([^/]+)\/card-open$/, 'admin', async ({ db, args }) => 
   return json({ ok: true, card_open: 1 });
 });
 
+// ---------------------------------------------------------------------------
+// Portal del socio: cada cliente entra con su cédula y su contraseña.
+// Usa tablas propias (client_accounts / client_sessions): una sesión del personal no sirve aquí
+// y una sesión del portal no sirve en las rutas del personal.
+// ---------------------------------------------------------------------------
+
+const PORTAL_SESSION_DAYS = 30;
+const normalizeCedula = (v) => String(v ?? '').trim().toUpperCase().replace(/\s+/g, '');
+
+// Contraseña temporal legible (sin letras confundibles como O/0 o I/1).
+function tempPassword() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return [...crypto.getRandomValues(new Uint8Array(10))].map((b) => alphabet[b % alphabet.length]).join('');
+}
+
+async function authenticateClient(db, request) {
+  const header = request.headers.get('authorization') || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  if (!token) throw new HttpError(401, 'Sesión requerida');
+  const row = await db.prepare(
+    `SELECT s.client_id, s.expires_at, a.must_change, a.active AS account_active, c.active AS client_active
+       FROM client_sessions s
+       JOIN client_accounts a ON a.client_id = s.client_id
+       JOIN clients c ON c.id = s.client_id
+      WHERE s.token_hash = ?`,
+  ).bind(await sha256Hex(token)).first();
+  if (!row || !row.account_active || !row.client_active || row.expires_at < Date.now()) {
+    throw new HttpError(401, 'Sesión expirada, vuelve a ingresar');
+  }
+  return { clientId: row.client_id, tokenHash: await sha256Hex(token), mustChange: row.must_change === 1 };
+}
+
+// Lo que ve el socio. La tarjeta (código QR) solo aparece con membresía activa o por vencer.
+async function portalPayload(db, clientId, mustChange) {
+  if (mustChange) return { must_change: true };
+  const client = await db.prepare('SELECT full_name, code FROM clients WHERE id = ?').bind(clientId).first();
+  const m = await db.prepare(
+    `SELECT m.end_date, p.name AS plan_name FROM memberships m JOIN plans p ON p.id = m.plan_id
+      WHERE m.client_id = ? ORDER BY m.end_date DESC LIMIT 1`,
+  ).bind(clientId).first();
+  const today = todayPanama();
+  const status = membershipStatus(m?.end_date, today);
+  const showCard = (status === 'activa' || status === 'por_vencer') && !!client.code;
+  const { results } = await db.prepare(
+    "SELECT key, value FROM settings WHERE key IN ('gym_name', 'phone', 'whatsapp', 'schedule')",
+  ).all();
+  const gym = Object.fromEntries(results.map((r) => [r.key, r.value ?? '']));
+  return {
+    must_change: false,
+    client: { name: client.full_name },
+    membership: {
+      status,
+      plan: m?.plan_name ?? null,
+      end_date: m?.end_date ?? null,
+      days_left: m?.end_date ? daysBetween(m.end_date, today) : null,
+    },
+    card: showCard ? { code: client.code } : null,
+    gym: { name: gym.gym_name || '', phone: gym.phone || '', whatsapp: gym.whatsapp || '', schedule: gym.schedule || '' },
+  };
+}
+
+route('POST', /^portal\/login$/, 'public', async ({ db, body }) => {
+  const login = normalizeCedula(body.cedula);
+  const password = typeof body.password === 'string' ? body.password : '';
+  if (!login || !password) throw new HttpError(400, 'Escribe tu cédula y tu contraseña');
+  const row = await db.prepare(
+    `SELECT a.client_id, a.password_hash, a.salt, a.must_change
+       FROM clients c JOIN client_accounts a ON a.client_id = c.id
+      WHERE UPPER(REPLACE(TRIM(c.cedula), ' ', '')) = ? AND a.active = 1 AND c.active = 1`,
+  ).bind(login).first();
+  const ok = row && await verifyPassword(password, row.password_hash, row.salt);
+  if (!ok) throw new HttpError(401, 'Cédula o contraseña incorrectas');
+  const token = randomToken();
+  await db.batch([
+    db.prepare('INSERT INTO client_sessions (token_hash, client_id, expires_at) VALUES (?, ?, ?)')
+      .bind(await sha256Hex(token), row.client_id, Date.now() + PORTAL_SESSION_DAYS * 86400000),
+    db.prepare("UPDATE client_accounts SET last_login = datetime('now') WHERE client_id = ?").bind(row.client_id),
+  ]);
+  return json({ token, must_change: row.must_change === 1 });
+});
+
+route('POST', /^portal\/logout$/, 'public', async ({ db, request }) => {
+  const s = await authenticateClient(db, request);
+  await db.prepare('DELETE FROM client_sessions WHERE token_hash = ?').bind(s.tokenHash).run();
+  return json({ ok: true });
+});
+
+route('GET', /^portal\/me$/, 'public', async ({ db, request }) => {
+  const s = await authenticateClient(db, request);
+  return json(await portalPayload(db, s.clientId, s.mustChange));
+});
+
+// Cambio de contraseña (también es el primer paso después de una contraseña temporal).
+route('POST', /^portal\/password$/, 'public', async ({ db, request, body }) => {
+  const s = await authenticateClient(db, request);
+  const current = typeof body.current === 'string' ? body.current : '';
+  const next = typeof body.password === 'string' ? body.password : '';
+  if (next.length < 8) throw new HttpError(400, 'La nueva contraseña debe tener al menos 8 caracteres');
+  if (next === current) throw new HttpError(400, 'La nueva contraseña debe ser distinta a la actual');
+  const acc = await db.prepare('SELECT password_hash, salt FROM client_accounts WHERE client_id = ?').bind(s.clientId).first();
+  if (!await verifyPassword(current, acc.password_hash, acc.salt)) {
+    throw new HttpError(401, 'La contraseña actual no es correcta');
+  }
+  const { hash, salt } = await hashPassword(next);
+  await db.batch([
+    db.prepare('UPDATE client_accounts SET password_hash = ?, salt = ?, must_change = 0 WHERE client_id = ?')
+      .bind(hash, salt, s.clientId),
+    // Se cierran las demás sesiones del socio; la actual sigue abierta.
+    db.prepare('DELETE FROM client_sessions WHERE client_id = ? AND token_hash != ?').bind(s.clientId, s.tokenHash),
+  ]);
+  return json(await portalPayload(db, s.clientId, false));
+});
+
+// Administrador: crea o restablece el acceso del socio con una contraseña temporal (se muestra una sola vez).
+route('POST', /^clients\/([^/]+)\/portal-access$/, 'admin', async ({ db, args }) => {
+  const client = await db.prepare('SELECT id, cedula FROM clients WHERE id = ? AND active = 1').bind(args[0]).first();
+  if (!client) throw new HttpError(404, 'Cliente no encontrado');
+  if (!normalizeCedula(client.cedula)) throw new HttpError(400, 'El cliente necesita cédula para tener acceso al portal');
+  const password = tempPassword();
+  const { hash, salt } = await hashPassword(password);
+  await db.batch([
+    db.prepare(
+      `INSERT INTO client_accounts (client_id, password_hash, salt, must_change, active)
+       VALUES (?, ?, ?, 1, 1)
+       ON CONFLICT(client_id) DO UPDATE SET password_hash = excluded.password_hash,
+         salt = excluded.salt, must_change = 1, active = 1`,
+    ).bind(client.id, hash, salt),
+    db.prepare('DELETE FROM client_sessions WHERE client_id = ?').bind(client.id),
+  ]);
+  return json({ login: client.cedula, password }, 201);
+});
+
 route('POST', /^admin\/reset$/, 'creator', async ({ db, body }) => {
   if (body.confirm !== 'REINICIAR') throw new HttpError(400, 'Escribe REINICIAR para confirmar el reinicio');
   // Orden pensado para las llaves foráneas: primero lo que depende de otras tablas.
-  const tables = ['client_ledger', 'sale_items', 'stock_movements', 'payments', 'sales', 'memberships', 'entries', 'clients', 'products'];
+  const tables = ['client_sessions', 'client_accounts', 'client_ledger', 'sale_items', 'stock_movements', 'payments', 'sales', 'memberships', 'entries', 'clients', 'products'];
   const deleted = {};
   for (const t of tables) {
     deleted[t] = (await db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).first()).n;
