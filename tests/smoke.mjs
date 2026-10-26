@@ -98,7 +98,7 @@ const cedula = `8-${suffix}`;
 const c1 = await call('POST', 'clients', { token: userToken, body: { full_name: 'Juan Prueba', cedula, phone: '6000-0001' } });
 check('recepción registra cliente', c1.status === 201, JSON.stringify(c1.data));
 const clientId = c1.data.client.id;
-const dup = await call('POST', 'clients', { token: userToken, body: { full_name: 'Otro', cedula } });
+const dup = await call('POST', 'clients', { token: userToken, body: { full_name: 'Otro', phone: '6000-1111', cedula } });
 check('cédula duplicada rechazada', dup.status === 409, `status ${dup.status}`);
 const search = await call('GET', `clients?q=${encodeURIComponent(cedula)}`, { token: userToken });
 check('búsqueda por cédula encuentra al cliente', search.data.clients.some((c) => c.id === clientId));
@@ -143,7 +143,7 @@ const outAgain = await call('POST', `entries/${entryId}/check-out`, { token: use
 check('segunda salida rechazada', outAgain.status === 409);
 
 // Cliente con membresía vencida
-const c2 = await call('POST', 'clients', { token: userToken, body: { full_name: 'Vencido Prueba', cedula: `9-${suffix}` } });
+const c2 = await call('POST', 'clients', { token: userToken, body: { full_name: 'Vencido Prueba', phone: '6000-1111', cedula: `9-${suffix}` } });
 await call('POST', 'memberships', { token: userToken, body: { client_id: c2.data.client.id, plan_id: 'daily', method: 'efectivo' } });
 const daily = await call('POST', 'entries/check-in', { token: userToken, body: { client_id: c2.data.client.id } });
 check('pago diario permite entrar el mismo día', daily.status === 201, JSON.stringify(daily.data));
@@ -265,7 +265,7 @@ const dailyMember = await call('POST', 'memberships', { token: creator, body: { 
 check('miembro activo no puede pagar uso diario', dailyMember.status === 409, `status ${dailyMember.status}`);
 const dailyTwice = await call('POST', 'memberships', { token: creator, body: { client_id: c2.data.client.id, plan_id: 'daily', method: 'efectivo' } });
 check('no se cobra uso diario dos veces el mismo día', dailyTwice.status === 409, `status ${dailyTwice.status}`);
-const c3 = await call('POST', 'clients', { token: creator, body: { full_name: 'Visitante Prueba', cedula: `7-${suffix}` } });
+const c3 = await call('POST', 'clients', { token: creator, body: { full_name: 'Visitante Prueba', phone: '6000-1111', cedula: `7-${suffix}` } });
 const dailyNew = await call('POST', 'memberships', { token: creator, body: { client_id: c3.data.client.id, plan_id: 'daily', method: 'efectivo' } });
 check('sin membresía sí paga uso diario', dailyNew.status === 201, `status ${dailyNew.status}`);
 const dailyIn = await call('POST', 'entries/check-in', { token: creator, body: { client_id: c3.data.client.id } });
