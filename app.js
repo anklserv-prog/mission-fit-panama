@@ -655,18 +655,22 @@
       <p style="margin-top:8px;">Estado: ${badge(client.membership_status)} · Plan: <strong>${esc(client.membership_plan || '—')}</strong> · Vence: <strong>${fmtDate(client.membership_end)}</strong></p>
       <hr class="detail-divider">
       <div class="card-title" style="font-size:15px;">🪪 Tarjeta del cliente</div>
+      ${client.code ? `
       <div class="client-card-box">
         <img id="qrImg" class="qr-img" alt="QR del cliente">
         <div>
           <div class="muted">Código interno · <span id="cardShareInfo"></span></div>
-          <div class="client-code">${esc(client.code || '—')}</div>
+          <div class="client-code">${esc(client.code)}</div>
           <div class="card-actions">
             <button class="btn btn-secondary btn-small" data-card-download>⬇️ Descargar tarjeta</button>
-            <button class="btn btn-success btn-small" data-card-share ${cardLimited(client) ? 'disabled' : ''}>📤 Enviar por WhatsApp</button>
+            <button class="btn btn-success btn-small" data-card-share>📤 Enviar por WhatsApp</button>
             <button class="btn btn-secondary btn-small" data-wa-chat>💬 Abrir chat</button>
           </div>
         </div>
-      </div>
+      </div>` : `
+      <div class="status-box warn">🔒 <strong>Tarjeta protegida.</strong> Para descargarla, enviarla o verla de nuevo, solicítalo a la administración.</div>
+      <div class="btn-group"><button class="btn btn-secondary btn-small" data-wa-chat>💬 Abrir chat</button></div>`}
+      ${can('admin') && client.card_open !== 1 ? '<div class="btn-group"><button class="btn btn-secondary btn-small" data-card-open>🔓 Permitir un uso a recepción</button></div>' : ''}
       <hr class="detail-divider">
       <div class="card-title" style="font-size:15px;">📒 Cuenta del cliente</div>
       <div class="status-box ${bal > 0.005 ? 'warn' : 'ok'}">Saldo pendiente: <strong>${money(bal)}</strong></div>
@@ -1212,55 +1216,47 @@
   }
   // Con navegador móvil: abre el menú de compartir (WhatsApp → contacto), como en UTAPP.
   // En escritorio: descarga la imagen y abre el chat para adjuntarla.
-  // Límite de envíos: el cajero (recepción) solo puede enviar la tarjeta una vez por cliente.
-  // Administrador y creador pueden enviarla sin límite.
-  const cardLimited = (client) => me.role === 'user' && Number(client.card_shares || 0) >= 1;
-  function refreshCardShareInfo() {
-    if (!cardClient) return;
-    const n = Number(cardClient.card_shares || 0);
-    const info = $('cardShareInfo');
-    if (info) info.textContent = n ? `Tarjeta enviada ${n} ${n === 1 ? 'vez' : 'veces'}` : 'Tarjeta sin enviar';
-    const btn = document.querySelector('[data-card-share]');
-    if (btn) {
-      const limited = cardLimited(cardClient);
-      btn.disabled = limited;
-      btn.textContent = limited ? '📤 Ya enviada (solo admin)' : '📤 Enviar por WhatsApp';
-    }
-  }
-  async function recordCardShare(c) {
+  // Tarjeta protegida: la recepción la usa una sola vez (enviar o descargar) cuando el administrador
+  // la abre; después queda bloqueada. Al usarla se cierra antes de generar la imagen: si se cancela el envío, también cuenta.
+  async function consumeCard(c) {
     try {
-      const r = await api('POST', 'clients/' + encodeURIComponent(c.id) + '/card-share');
-      if (cardClient && cardClient.id === c.id) cardClient.card_shares = r.card_shares;
-      refreshCardShareInfo();
+      const r = await api('POST', 'clients/' + encodeURIComponent(c.id) + '/card-use');
+      if (me.role === 'user') {
+        clientDetail(c.id).catch(() => {});
+      } else if (cardClient && cardClient.id === c.id) {
+        cardClient.card_shares = r.card_shares;
+        refreshCardShareInfo();
+      }
+      return true;
     } catch (err) {
       toast(err.message, false);
+      return false;
+    }
+  }
+  function refreshCardShareInfo() {
+    const info = $('cardShareInfo');
+    if (info && cardClient) {
+      const n = Number(cardClient.card_shares || 0);
+      info.textContent = `Tarjeta usada ${n} ${n === 1 ? 'vez' : 'veces'}`;
     }
   }
   async function shareClientCard(c) {
-    // Revisa el límite con datos actuales antes de preparar la imagen.
-    const { client: fresh } = await api('GET', 'clients/' + encodeURIComponent(c.id));
-    if (cardLimited(fresh)) {
-      toast('Esta tarjeta ya se envió. Solo el administrador puede enviar otra copia.', false);
-      if (cardClient && cardClient.id === c.id) { cardClient.card_shares = fresh.card_shares; refreshCardShareInfo(); }
-      return;
-    }
-    const blob = await clientCardBlob(c);
-    const file = new File([blob], `tarjeta-${c.code}.png`, { type: 'image/png' });
-    const text = waText(c);
+    const snap = { ...c };
+    if (!(await consumeCard(c))) return;
+    const blob = await clientCardBlob(snap);
+    const file = new File([blob], `tarjeta-${snap.code}.png`, { type: 'image/png' });
+    const text = waText(snap);
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({ files: [file], text });
       } catch (err) {
         if (err.name !== 'AbortError') throw err;
-        return; // Canceló el envío: no cuenta.
       }
-      await recordCardShare(c);
       return;
     }
-    downloadBlob(blob, `tarjeta-${c.code}.png`);
-    openWhatsappChat(c.phone, text);
+    downloadBlob(blob, `tarjeta-${snap.code}.png`);
+    openWhatsappChat(snap.phone, text);
     toast('Imagen descargada: adjúntala en el chat de WhatsApp.');
-    await recordCardShare(c);
   }
 
   // -------------------------------------------------------------------------
@@ -1735,8 +1731,16 @@
     $('modalBox').addEventListener('click', async (e) => {
       if (e.target.closest('[data-close-modal]')) { closeModal(); return; }
       if (e.target.closest('[data-card-download]') && cardClient) {
-        const c = cardClient;
-        clientCardBlob(c).then((b) => downloadBlob(b, `tarjeta-${c.code}.png`)).catch((err) => toast(err.message, false));
+        const snap = { ...cardClient };
+        if (!(await consumeCard(cardClient))) return;
+        clientCardBlob(snap).then((b) => downloadBlob(b, `tarjeta-${snap.code}.png`)).catch((err) => toast(err.message, false));
+        return;
+      }
+      if (e.target.closest('[data-card-open]') && cardClient) {
+        const id = cardClient.id;
+        api('POST', 'clients/' + encodeURIComponent(id) + '/card-open')
+          .then(() => { toast('Tarjeta abierta para un uso de recepción'); return clientDetail(id); })
+          .catch((err) => toast(err.message, false));
         return;
       }
       if (e.target.closest('[data-card-share]') && cardClient) {
