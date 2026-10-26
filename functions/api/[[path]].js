@@ -230,7 +230,7 @@ function withStatus(client, membership, today) {
   };
 }
 
-route('GET', /^clients$/, 'user', async ({ db, url }) => {
+route('GET', /^clients$/, 'user', async ({ db, user, url }) => {
   const q = (url.searchParams.get('q') || '').trim();
   const like = `%${q}%`;
   const { results } = await db.prepare(
@@ -240,7 +240,7 @@ route('GET', /^clients$/, 'user', async ({ db, url }) => {
   ).bind(q, like, like, like, like).all();
   const latest = await latestMemberships(db);
   const today = todayPanama();
-  return json({ clients: results.map((c) => withStatus(c, latest.get(c.id), today)) });
+  return json({ clients: results.map((c) => withStatus(maskCard(user, c), latest.get(c.id), today)) });
 });
 
 function clientFields(body) {
@@ -299,14 +299,25 @@ async function clientPayload(db, id) {
   };
 }
 
-route('GET', /^clients\/code\/([^/]+)$/, 'user', async ({ db, args }) => {
+// La tarjeta (QR y código) solo la ve la recepción cuando está abierta. Administrador y creador siempre la ven.
+const cardVisibleTo = (user, client) => ROLE_RANK[user.role] >= ROLE_RANK.admin || client.card_open === 1;
+function maskCard(user, client) {
+  const visible = cardVisibleTo(user, client);
+  return { ...client, code: visible ? client.code : null, card_visible: visible ? 1 : 0 };
+}
+
+route('GET', /^clients\/code\/([^/]+)$/, 'user', async ({ db, user, args }) => {
   const code = decodeURIComponent(args[0]).trim().toUpperCase();
   const row = await db.prepare('SELECT id FROM clients WHERE code = ? AND active = 1').bind(code).first();
   if (!row) throw new HttpError(404, 'Código de cliente no encontrado');
-  return json(await clientPayload(db, row.id));
+  const p = await clientPayload(db, row.id);
+  return json({ ...p, client: maskCard(user, p.client) });
 });
 
-route('GET', /^clients\/([^/]+)$/, 'user', async ({ db, args }) => json(await clientPayload(db, args[0])));
+route('GET', /^clients\/([^/]+)$/, 'user', async ({ db, user, args }) => {
+  const p = await clientPayload(db, args[0]);
+  return json({ ...p, client: maskCard(user, p.client) });
+});
 
 route('PUT', /^clients\/([^/]+)$/, 'admin', async ({ db, args, body }) => {
   const id = args[0];
@@ -375,14 +386,18 @@ route('POST', /^memberships$/, 'user', async ({ db, user, body }) => {
   const membershipId = newId();
   const paymentId = newId();
 
-  await db.batch([
+  const hadMembership = await db.prepare('SELECT 1 AS x FROM memberships WHERE client_id = ? LIMIT 1').bind(clientId).first();
+  const enrollStmts = [
     db.prepare(
       'INSERT INTO memberships (id, client_id, plan_id, start_date, end_date, amount) VALUES (?, ?, ?, ?, ?, ?)',
     ).bind(membershipId, clientId, plan.id, start, end, plan.price),
     db.prepare(
       'INSERT INTO payments (id, client_id, membership_id, amount, method, day, created_by, reference) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     ).bind(paymentId, clientId, membershipId, plan.price, method, today, user.id, reference),
-  ]);
+  ];
+  // Primera inscripción: la tarjeta queda abierta para la recepción (un solo uso).
+  if (!hadMembership) enrollStmts.push(db.prepare('UPDATE clients SET card_open = 1 WHERE id = ?').bind(clientId));
+  await db.batch(enrollStmts);
 
   return json({
     membership: { id: membershipId, plan_name: plan.name, start_date: start, end_date: end },
@@ -1037,16 +1052,25 @@ route('GET', /^settings$/, 'user', async ({ db }) => {
 // Reinicio de datos (solo creador), pensado para cuando termina la prueba Beta.
 // Borra clientes, membresías, pagos, entradas, ventas, cuentas e inventario.
 // Conserva usuarios, sesiones, planes y la configuración del gimnasio.
-// Envío de la tarjeta por WhatsApp. El cajero (recepción) solo puede enviarla una vez por cliente;
-// administrador y creador pueden enviarla sin límite.
-route('POST', /^clients\/([^/]+)\/card-share$/, 'user', async ({ db, user, args }) => {
-  const client = await db.prepare('SELECT id, card_shares FROM clients WHERE id = ? AND active = 1').bind(args[0]).first();
+// Uso de la tarjeta (enviar por WhatsApp o descargar). La recepción solo la usa mientras esté abierta;
+// al usarla se cierra y el administrador debe autorizar otro uso. Administrador y creador siempre pueden.
+route('POST', /^clients\/([^/]+)\/card-use$/, 'user', async ({ db, user, args }) => {
+  const client = await db.prepare('SELECT id, card_open, card_shares FROM clients WHERE id = ? AND active = 1').bind(args[0]).first();
   if (!client) throw new HttpError(404, 'Cliente no encontrado');
-  if (ROLE_RANK[user.role] < ROLE_RANK.admin && client.card_shares >= 1) {
-    throw new HttpError(403, 'Esta tarjeta ya se envió. Solo el administrador puede enviar otra copia.');
+  const isAdmin = ROLE_RANK[user.role] >= ROLE_RANK.admin;
+  if (!isAdmin && client.card_open !== 1) {
+    throw new HttpError(403, 'Tarjeta protegida. Solicita autorización a la administración.');
   }
-  await db.prepare('UPDATE clients SET card_shares = card_shares + 1 WHERE id = ?').bind(client.id).run();
-  return json({ card_shares: client.card_shares + 1 });
+  await db.prepare(`UPDATE clients SET card_shares = card_shares + 1${isAdmin ? '' : ', card_open = 0'} WHERE id = ?`).bind(client.id).run();
+  return json({ card_shares: client.card_shares + 1, card_open: isAdmin ? client.card_open : 0 });
+});
+
+// Autorización del administrador: abre la tarjeta para un uso de la recepción.
+route('POST', /^clients\/([^/]+)\/card-open$/, 'admin', async ({ db, args }) => {
+  const client = await db.prepare('SELECT id FROM clients WHERE id = ? AND active = 1').bind(args[0]).first();
+  if (!client) throw new HttpError(404, 'Cliente no encontrado');
+  await db.prepare('UPDATE clients SET card_open = 1 WHERE id = ?').bind(client.id).run();
+  return json({ ok: true, card_open: 1 });
 });
 
 route('POST', /^admin\/reset$/, 'creator', async ({ db, body }) => {
