@@ -398,3 +398,6 @@
 
 /* Evita el zoom de Safari (iPad/iPhone) por doble toque al tocar botones y tarjetas. El pellizco para hacer zoom sigue funcionando. */
 button, a, label, input, select, textarea, .nav-item, .mode-tab, .pcard, .cat-tab, .result-row, .sale-row, .clickable, .stat-card, .inside-info { touch-action: manipulation; }
+
+/* Botones deshabilitados: se ven apagados para no confundir con los activos. */
+.btn:disabled { opacity: .45; cursor: not-allowed; }

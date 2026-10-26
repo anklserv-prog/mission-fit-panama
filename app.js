@@ -464,6 +464,11 @@
     });
     $('renewBtn')?.addEventListener('click', async (e) => {
       const btn = e.currentTarget;
+      if ($('renewMethod').value === 'yapi' && !$('renewRef').value.trim()) {
+        toast('Ingresa el código de transacción de Yappy antes de cobrar', false);
+        $('renewRef').focus();
+        return;
+      }
       setBusy(btn, true);
       try {
         const r = await api('POST', 'memberships', {
@@ -486,6 +491,12 @@
     });
     $('dailyBtn')?.addEventListener('click', async (e) => {
       const btn = e.currentTarget;
+      // Yappy sin código: no se cobra ni se registra la entrada.
+      if ($('dailyMethod').value === 'yapi' && !$('dailyRef').value.trim()) {
+        toast('Ingresa el código de transacción de Yappy antes de cobrar', false);
+        $('dailyRef').focus();
+        return;
+      }
       setBusy(btn, true);
       try {
         const dp = dailyPlan();
