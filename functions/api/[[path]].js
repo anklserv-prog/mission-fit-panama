@@ -4,7 +4,7 @@ import {
   HttpError, json, fail, readBody, newId, hashPassword, verifyPassword, sha256Hex, randomToken,
   todayPanama, addDays, daysBetween, membershipStatus, ROLE_RANK,
   requireString, optString, requireNumber, requireInt, requireMethod, requireDay, isUniqueError, requireIcon,
-  requireYappyRef,
+  requireYappyRef, normalizePhonePA, newClientCode,
 } from '../../lib/util.js';
 
 const SESSION_DAYS = 30;
@@ -235,19 +235,20 @@ route('GET', /^clients$/, 'user', async ({ db, url }) => {
   const like = `%${q}%`;
   const { results } = await db.prepare(
     `SELECT * FROM clients
-      WHERE active = 1 AND (? = '' OR full_name LIKE ? OR cedula LIKE ? OR phone LIKE ?)
+      WHERE active = 1 AND (? = '' OR full_name LIKE ? OR cedula LIKE ? OR phone LIKE ? OR code LIKE ?)
       ORDER BY full_name LIMIT 300`,
-  ).bind(q, like, like, like).all();
+  ).bind(q, like, like, like, like).all();
   const latest = await latestMemberships(db);
   const today = todayPanama();
   return json({ clients: results.map((c) => withStatus(c, latest.get(c.id), today)) });
 });
 
 function clientFields(body) {
+  if (!String(body.phone ?? '').trim()) throw new HttpError(400, 'El teléfono es obligatorio (para WhatsApp)');
   return {
     full_name: requireString(body.full_name, 'Nombre completo', 120),
     cedula: optString(body.cedula, 30),
-    phone: optString(body.phone, 30),
+    phone: normalizePhonePA(body.phone),
     email: optString(body.email, 120),
     birth_date: body.birth_date ? requireDay(body.birth_date, 'Fecha de nacimiento') : null,
     notes: optString(body.notes, 500),
@@ -257,19 +258,20 @@ function clientFields(body) {
 route('POST', /^clients$/, 'user', async ({ db, body }) => {
   const f = clientFields(body);
   const id = newId();
+  const code = newClientCode();
   try {
     await db.prepare(
-      'INSERT INTO clients (id, full_name, cedula, phone, email, birth_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    ).bind(id, f.full_name, f.cedula, f.phone, f.email, f.birth_date, f.notes).run();
+      'INSERT INTO clients (id, full_name, cedula, phone, email, birth_date, notes, code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    ).bind(id, f.full_name, f.cedula, f.phone, f.email, f.birth_date, f.notes, code).run();
   } catch (err) {
     if (isUniqueError(err)) throw new HttpError(409, 'Ya existe un cliente con esa cédula');
     throw err;
   }
-  return json({ client: { id, ...f } }, 201);
+  return json({ client: { id, code, ...f } }, 201);
 });
 
-route('GET', /^clients\/([^/]+)$/, 'user', async ({ db, args }) => {
-  const id = args[0];
+// Ficha completa del cliente: datos, estado, membresías, pagos, entradas y saldo.
+async function clientPayload(db, id) {
   const client = await db.prepare('SELECT * FROM clients WHERE id = ? AND active = 1').bind(id).first();
   if (!client) throw new HttpError(404, 'Cliente no encontrado');
 
@@ -289,13 +291,22 @@ route('GET', /^clients\/([^/]+)$/, 'user', async ({ db, args }) => {
     ).bind(id),
   ]);
 
-  return json({
+  return {
     client: { ...withStatus(client, latest, today), balance: await clientBalance(db, id) },
     memberships: memberships.results,
     payments: payments.results,
     entries: entries.results,
-  });
+  };
+}
+
+route('GET', /^clients\/code\/([^/]+)$/, 'user', async ({ db, args }) => {
+  const code = decodeURIComponent(args[0]).trim().toUpperCase();
+  const row = await db.prepare('SELECT id FROM clients WHERE code = ? AND active = 1').bind(code).first();
+  if (!row) throw new HttpError(404, 'Código de cliente no encontrado');
+  return json(await clientPayload(db, row.id));
 });
+
+route('GET', /^clients\/([^/]+)$/, 'user', async ({ db, args }) => json(await clientPayload(db, args[0])));
 
 route('PUT', /^clients\/([^/]+)$/, 'admin', async ({ db, args, body }) => {
   const id = args[0];
@@ -786,6 +797,234 @@ route('GET', /^reports\/summary$/, 'admin', async ({ db, url }) => {
 // ---------------------------------------------------------------------------
 // Configuración
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Búsqueda de pagos por código de Yappy (admin) y detalle de reportes
+// ---------------------------------------------------------------------------
+
+route('GET', /^payments\/search$/, 'admin', async ({ db, url }) => {
+  const ref = (url.searchParams.get('ref') || '').trim().toUpperCase().replace(/\s/g, '');
+  if (ref.length < 3) throw new HttpError(400, 'Escribe al menos 3 caracteres del código de Yappy');
+  if (!/^[A-Z0-9-]{3,40}$/.test(ref)) throw new HttpError(400, 'El código solo puede tener letras, números y guiones');
+  const like = `%${ref}%`;
+  const [pay, sales] = await db.batch([
+    db.prepare(
+      `SELECT p.id, p.reference, p.amount, p.method, p.day, p.created_at, 'Membresía' AS kind,
+              c.full_name AS client_name, c.phone AS client_phone
+         FROM payments p LEFT JOIN clients c ON c.id = p.client_id
+        WHERE p.reference LIKE ? ORDER BY p.created_at DESC LIMIT 50`,
+    ).bind(like),
+    db.prepare(
+      `SELECT s.id, s.reference, s.total AS amount, s.method, s.day, s.created_at, 'Venta Market' AS kind,
+              c.full_name AS client_name, c.phone AS client_phone
+         FROM sales s LEFT JOIN clients c ON c.id = s.client_id
+        WHERE s.reference LIKE ? ORDER BY s.created_at DESC LIMIT 50`,
+    ).bind(like),
+  ]);
+  const results = [...pay.results, ...sales.results]
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  return json({ results });
+});
+
+// Ventas de un día (Market). Por defecto, hoy.
+route('GET', /^sales$/, 'user', async ({ db, url }) => {
+  const day = requireDay(url.searchParams.get('day') || todayPanama(), 'Día');
+  const { results } = await db.prepare(
+    `SELECT s.id, s.total, s.method, s.on_account, s.reference, s.day, s.created_at,
+            c.full_name AS client_name,
+            (SELECT GROUP_CONCAT(p.name || ' x' || si.qty, ', ')
+               FROM sale_items si JOIN products p ON p.id = si.product_id
+              WHERE si.sale_id = s.id) AS items
+       FROM sales s LEFT JOIN clients c ON c.id = s.client_id
+      WHERE s.day = ? ORDER BY s.created_at DESC`,
+  ).bind(day).all();
+  return json({ sales: results });
+});
+
+route('GET', /^sales\/([^/]+)$/, 'user', async ({ db, args }) => {
+  const sale = await db.prepare(
+    `SELECT s.*, c.full_name AS client_name, c.phone AS client_phone
+       FROM sales s LEFT JOIN clients c ON c.id = s.client_id WHERE s.id = ?`,
+  ).bind(args[0]).first();
+  if (!sale) throw new HttpError(404, 'Venta no encontrada');
+  const { results } = await db.prepare(
+    `SELECT p.name, p.icon, si.qty, si.unit_price, si.qty * si.unit_price AS subtotal
+       FROM sale_items si JOIN products p ON p.id = si.product_id WHERE si.sale_id = ?`,
+  ).bind(sale.id).all();
+  return json({ sale, lines: results });
+});
+
+const PANAMA_TIME = { hour: '2-digit', minute: '2-digit', timeZone: 'America/Panama' };
+const panamaTime = (ms) => (ms ? new Date(ms).toLocaleTimeString('es-PA', PANAMA_TIME) : '');
+
+// Detalle de cada tarjeta del reporte. Devuelve columnas y filas listas para la tabla y para Excel.
+route('GET', /^reports\/detail$/, 'admin', async ({ db, url }) => {
+  const today = todayPanama();
+  const kind = url.searchParams.get('kind') || '';
+  const from = checkDay(url.searchParams.get('from'), today);
+  const to = checkDay(url.searchParams.get('to'), today);
+  if (from > to) throw new HttpError(400, 'La fecha inicial es posterior a la final');
+  const range = [from, to];
+  const itemsOf = `(SELECT GROUP_CONCAT(p.name || ' x' || si.qty, ', ') FROM sale_items si JOIN products p ON p.id = si.product_id WHERE si.sale_id = s.id)`;
+
+  if (kind === 'income') {
+    const { results } = await db.prepare(
+      `SELECT p.day AS day, 'Membresía' AS tipo, c.full_name AS cliente, pl.name AS detalle,
+              p.method AS metodo, p.amount AS monto, p.reference AS ref
+         FROM payments p
+         LEFT JOIN clients c ON c.id = p.client_id
+         LEFT JOIN memberships m ON m.id = p.membership_id
+         LEFT JOIN plans pl ON pl.id = m.plan_id
+        WHERE p.day BETWEEN ? AND ?
+       UNION ALL
+       SELECT s.day, 'Venta Market', c.full_name, ${itemsOf}, s.method, s.total, s.reference
+         FROM sales s LEFT JOIN clients c ON c.id = s.client_id
+        WHERE s.on_account = 0 AND s.day BETWEEN ? AND ?
+       UNION ALL
+       SELECT l.day, 'Abono de cuenta', c.full_name, l.note, l.method, l.amount, NULL
+         FROM client_ledger l LEFT JOIN clients c ON c.id = l.client_id
+        WHERE l.kind = 'abono' AND l.day BETWEEN ? AND ?
+       ORDER BY day, tipo`,
+    ).bind(...range, ...range, ...range).all();
+    return json({
+      title: 'Ingresos totales', columns: ['Fecha', 'Tipo', 'Cliente', 'Detalle', 'Método', 'Monto', 'Código Yappy'],
+      rows: results.map((r) => [r.day, r.tipo, r.cliente || '', r.detalle || '', r.metodo || '', r.monto, r.ref || '']),
+    });
+  }
+
+  if (kind === 'memberships') {
+    const { results } = await db.prepare(
+      `SELECT p.day, c.full_name, c.phone, pl.name AS plan, m.start_date, m.end_date, p.method, p.amount, p.reference
+         FROM payments p
+         LEFT JOIN clients c ON c.id = p.client_id
+         LEFT JOIN memberships m ON m.id = p.membership_id
+         LEFT JOIN plans pl ON pl.id = m.plan_id
+        WHERE p.membership_id IS NOT NULL AND p.day BETWEEN ? AND ? ORDER BY p.day, c.full_name`,
+    ).bind(...range).all();
+    return json({
+      title: 'Membresías vendidas',
+      columns: ['Fecha', 'Cliente', 'Teléfono', 'Plan', 'Inicio', 'Vence', 'Método', 'Monto', 'Código Yappy'],
+      rows: results.map((r) => [r.day, r.full_name || '', r.phone || '', r.plan || '', r.start_date || '', r.end_date || '', r.method, r.amount, r.reference || '']),
+    });
+  }
+
+  if (kind === 'sales') {
+    const { results } = await db.prepare(
+      `SELECT s.day, c.full_name, ${itemsOf} AS items, s.method, s.total, s.reference
+         FROM sales s LEFT JOIN clients c ON c.id = s.client_id
+        WHERE s.on_account = 0 AND s.day BETWEEN ? AND ? ORDER BY s.day, s.created_at`,
+    ).bind(...range).all();
+    return json({
+      title: 'Ventas de Market',
+      columns: ['Fecha', 'Cliente', 'Productos', 'Método', 'Total', 'Código Yappy'],
+      rows: results.map((r) => [r.day, r.full_name || 'Mostrador', r.items || '', r.method, r.total, r.reference || '']),
+    });
+  }
+
+  if (kind === 'abonos') {
+    const { results } = await db.prepare(
+      `SELECT l.day, c.full_name, l.method, l.amount, l.note
+         FROM client_ledger l LEFT JOIN clients c ON c.id = l.client_id
+        WHERE l.kind = 'abono' AND l.day BETWEEN ? AND ? ORDER BY l.day, l.created_at`,
+    ).bind(...range).all();
+    return json({
+      title: 'Abonos cobrados',
+      columns: ['Fecha', 'Cliente', 'Método', 'Monto', 'Nota'],
+      rows: results.map((r) => [r.day, r.full_name || '', r.method || '', r.amount, r.note || '']),
+    });
+  }
+
+  if (kind === 'on_account') {
+    const { results } = await db.prepare(
+      `SELECT s.day, c.full_name, ${itemsOf} AS items, s.total
+         FROM sales s LEFT JOIN clients c ON c.id = s.client_id
+        WHERE s.on_account = 1 AND s.day BETWEEN ? AND ? ORDER BY s.day, s.created_at`,
+    ).bind(...range).all();
+    return json({
+      title: 'Cargado a cuentas',
+      columns: ['Fecha', 'Cliente', 'Productos', 'Total'],
+      rows: results.map((r) => [r.day, r.full_name || '', r.items || '', r.total]),
+    });
+  }
+
+  if (kind === 'pending') {
+    const { results } = await db.prepare(
+      `SELECT c.full_name, c.phone, c.code,
+              SUM(CASE WHEN l.kind = 'cargo' THEN l.amount ELSE -l.amount END) AS saldo
+         FROM clients c JOIN client_ledger l ON l.client_id = c.id
+        WHERE c.active = 1 GROUP BY c.id HAVING saldo > 0.005 ORDER BY saldo DESC`,
+    ).all();
+    return json({
+      title: 'Saldo pendiente de clientes (actual)',
+      columns: ['Cliente', 'Teléfono', 'Código', 'Saldo'],
+      rows: results.map((r) => [r.full_name, r.phone || '', r.code || '', Math.round(r.saldo * 100) / 100]),
+    });
+  }
+
+  if (kind === 'entries') {
+    const { results } = await db.prepare(
+      `SELECT e.day, c.full_name, c.code, e.check_in_at, e.check_out_at
+         FROM entries e JOIN clients c ON c.id = e.client_id
+        WHERE e.day BETWEEN ? AND ? ORDER BY e.check_in_at`,
+    ).bind(...range).all();
+    return json({
+      title: 'Entradas',
+      columns: ['Fecha', 'Cliente', 'Código', 'Entrada', 'Salida', 'Minutos'],
+      rows: results.map((r) => [
+        r.day, r.full_name, r.code || '', panamaTime(r.check_in_at), panamaTime(r.check_out_at),
+        r.check_out_at ? Math.round((r.check_out_at - r.check_in_at) / 60000) : '',
+      ]),
+    });
+  }
+
+  if (kind === 'new_clients') {
+    const { results } = await db.prepare(
+      `SELECT date(created_at, '-5 hours') AS alta, full_name, cedula, phone, code FROM clients
+        WHERE active = 1 AND date(created_at, '-5 hours') BETWEEN ? AND ? ORDER BY created_at`,
+    ).bind(...range).all();
+    return json({
+      title: 'Clientes nuevos',
+      columns: ['Fecha de alta', 'Cliente', 'Cédula', 'Teléfono', 'Código'],
+      rows: results.map((r) => [r.alta, r.full_name, r.cedula || '', r.phone || '', r.code || '']),
+    });
+  }
+
+  if (kind === 'clients') {
+    const { results } = await db.prepare('SELECT * FROM clients WHERE active = 1 ORDER BY full_name').all();
+    const latest = await latestMemberships(db);
+    const rows = results.map((c) => withStatus(c, latest.get(c.id), today));
+    return json({
+      title: 'Clientes activos',
+      columns: ['Cliente', 'Cédula', 'Teléfono', 'Código', 'Plan', 'Vence', 'Estado'],
+      rows: rows.map((c) => [c.full_name, c.cedula || '', c.phone || '', c.code || '', c.membership_plan || '', c.membership_end || '', c.membership_status]),
+    });
+  }
+
+  if (kind === 'expiring') {
+    const latest = await latestMemberships(db);
+    const rows = [];
+    for (const [clientId, m] of latest) {
+      const d = daysBetween(m.end_date, today);
+      if (d >= 0 && d <= 7) rows.push({ clientId, m });
+    }
+    rows.sort((a, b) => a.m.end_date.localeCompare(b.m.end_date));
+    const ids = rows.map((r) => r.clientId);
+    const names = ids.length
+      ? await db.prepare(`SELECT id, full_name, phone, code FROM clients WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all()
+      : { results: [] };
+    const byId = new Map(names.results.map((c) => [c.id, c]));
+    return json({
+      title: 'Membresías por vencer (7 días)',
+      columns: ['Cliente', 'Teléfono', 'Código', 'Plan', 'Vence'],
+      rows: rows.map(({ clientId, m }) => {
+        const c = byId.get(clientId) || {};
+        return [c.full_name || '', c.phone || '', c.code || '', m.plan_name, m.end_date];
+      }),
+    });
+  }
+
+  throw new HttpError(400, 'Tipo de reporte desconocido');
+});
 
 const SETTING_KEYS = ['gym_name', 'contact_email', 'phone', 'whatsapp', 'currency'];
 
