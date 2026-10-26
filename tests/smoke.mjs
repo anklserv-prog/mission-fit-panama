@@ -118,8 +118,12 @@ check('cobra membresía mensual', m1.status === 201, JSON.stringify(m1.data));
 check('membresía empieza hoy', m1.data.membership?.start_date === today);
 check('membresía dura 30 días', m1.data.membership?.end_date === addDays(today, 29));
 
-const m2 = await call('POST', 'memberships', { token: userToken, body: { client_id: clientId, plan_id: 'monthly', method: 'yapi' } });
+const yappyNoRef = await call('POST', 'memberships', { token: userToken, body: { client_id: clientId, plan_id: 'monthly', method: 'yapi' } });
+check('Yappy sin código rechazado', yappyNoRef.status === 400, `status ${yappyNoRef.status}`);
+const m2 = await call('POST', 'memberships', { token: userToken, body: { client_id: clientId, plan_id: 'monthly', method: 'yapi', reference: `yp-${suffix}-a` } });
 check('renovación empieza al día siguiente del vencimiento', m2.data.membership?.start_date === addDays(today, 30), JSON.stringify(m2.data));
+const yappyDup = await call('POST', 'memberships', { token: userToken, body: { client_id: clientId, plan_id: 'monthly', method: 'yapi', reference: `YP-${suffix}-A` } });
+check('código de Yappy repetido rechazado', yappyDup.status === 409, `status ${yappyDup.status}`);
 
 const badMethod = await call('POST', 'memberships', { token: userToken, body: { client_id: clientId, plan_id: 'monthly', method: 'bitcoin' } });
 check('método de pago inválido rechazado', badMethod.status === 400);
@@ -245,6 +249,15 @@ const deact = await call('PUT', `users/${recId}`, { token: creator, body: { acti
 check('creador desactiva recepción', deact.status === 200, JSON.stringify(deact.data));
 const oldSession = await call('GET', 'clients', { token: userToken });
 check('sesión de usuario desactivado se cierra', oldSession.status === 401, `status ${oldSession.status}`);
+
+// 10. Yappy en ventas de Market
+console.log('\n10. Yappy en Market');
+const yVenta = await call('POST', 'sales', { token: creator, body: { items: [{ product_id: pid, qty: 1 }], method: 'yapi' } });
+check('venta por Yappy sin código rechazada', yVenta.status === 400, `status ${yVenta.status}`);
+const yVentaOk = await call('POST', 'sales', { token: creator, body: { items: [{ product_id: pid, qty: 1 }], method: 'yapi', reference: `vy-${suffix}` } });
+check('venta por Yappy con código registrada', yVentaOk.status === 201, JSON.stringify(yVentaOk.data));
+const yVentaDup = await call('POST', 'sales', { token: creator, body: { items: [{ product_id: pid, qty: 1 }], method: 'yapi', reference: `VY-${suffix}` } });
+check('mismo código de Yappy en otra venta rechazado', yVentaDup.status === 409, `status ${yVentaDup.status}`);
 
 console.log(`\nResultado: ${passes} pasaron, ${failures} fallaron`);
 process.exit(failures ? 1 : 0);
