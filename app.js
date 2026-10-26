@@ -43,6 +43,38 @@
     return `${day}/${m}/${y}`;
   };
   const panamaToday = () => new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+  // Teléfono para WhatsApp: 507 + 8 dígitos.
+  const waNumber = (phone) => {
+    const d = String(phone || '').replace(/\D/g, '');
+    return d.length === 8 ? '507' + d : d;
+  };
+  // Hora (Panamá) a partir de una fecha guardada por SQLite en UTC.
+  const timeSql = (s) => (s
+    ? new Date(String(s).replace(' ', 'T') + 'Z').toLocaleTimeString('es-PA', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Panama' })
+    : '');
+  // Rango del período elegido en Reportes.
+  const periodRange = () => {
+    const today = panamaToday();
+    const p = $('repPeriod') ? $('repPeriod').value : 'today';
+    return { from: p === 'today' ? today : p === 'week' ? addDays(today, -6) : today.slice(0, 8) + '01', to: today };
+  };
+  // QR del código del cliente (librería local: funciona sin internet).
+  const qrDataUrl = (text, cell = 6) => {
+    const qr = qrcode(0, 'M');
+    qr.addData(text);
+    qr.make();
+    return qr.createDataURL(cell, 2);
+  };
+  const downloadBlob = (blob, name) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
   const addDays = (d, n) => {
     const x = new Date(d + 'T00:00:00Z');
     x.setUTCDate(x.getUTCDate() + n);
@@ -117,6 +149,7 @@
     $('modal').classList.add('active');
   }
   function closeModal() {
+    stopScanner();
     $('modal').classList.remove('active');
     $('modalBox').innerHTML = '';
   }
@@ -519,7 +552,7 @@
         <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nombre completo:</label><input name="full_name" required value="${v('full_name')}"></div></div>
         <div class="form-row">
           <div class="form-group"><label>Cédula:</label><input name="cedula" value="${v('cedula')}"></div>
-          <div class="form-group"><label>Teléfono:</label><input name="phone" type="tel" placeholder="+507 6789-0123" value="${v('phone')}"></div>
+          <div class="form-group"><label>Teléfono (WhatsApp):</label><input name="phone" type="tel" required placeholder="6789-0123" value="${v('phone')}"><span class="muted">Obligatorio. Se usa para enviar la tarjeta.</span></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Email:</label><input name="email" type="email" value="${v('email')}"></div>
@@ -573,6 +606,20 @@
       <p class="muted">Cédula ${esc(client.cedula || '–')} · Tel. ${esc(client.phone || '–')} · ${esc(client.email || '')}</p>
       <p style="margin-top:8px;">Estado: ${badge(client.membership_status)} · Plan: <strong>${esc(client.membership_plan || '—')}</strong> · Vence: <strong>${fmtDate(client.membership_end)}</strong></p>
       <hr class="detail-divider">
+      <div class="card-title" style="font-size:15px;">🪪 Tarjeta del cliente</div>
+      <div class="client-card-box">
+        <img id="qrImg" class="qr-img" alt="QR del cliente">
+        <div>
+          <div class="muted">Código interno</div>
+          <div class="client-code">${esc(client.code || '—')}</div>
+          <div class="card-actions">
+            <button class="btn btn-secondary btn-small" data-card-download>⬇️ Descargar tarjeta</button>
+            <button class="btn btn-success btn-small" data-card-share>📤 Enviar por WhatsApp</button>
+            <button class="btn btn-secondary btn-small" data-wa-chat>💬 Abrir chat</button>
+          </div>
+        </div>
+      </div>
+      <hr class="detail-divider">
       <div class="card-title" style="font-size:15px;">📒 Cuenta del cliente</div>
       <div class="status-box ${bal > 0.005 ? 'warn' : 'ok'}">Saldo pendiente: <strong>${money(bal)}</strong></div>
       ${bal > 0.005 ? `
@@ -602,6 +649,8 @@
         payments.slice(0, 10).map((p) => `<tr><td>${fmtDate(p.day)}</td><td>${METHOD_LABEL[p.method] || esc(p.method)}</td><td>${money(p.amount)}</td></tr>`).join('')
       }</tbody></table>` : '<p class="muted">Sin pagos registrados.</p>'}
     `);
+    cardClient = client;
+    if (client.code) $('qrImg').src = qrDataUrl(client.code, 4);
   }
 
   // -------------------------------------------------------------------------
@@ -625,6 +674,7 @@
     renderMarket();
     renderProductsTable();
     renderCart();
+    loadSalesToday().catch(() => {});
   }
 
   function renderMarket() {
@@ -731,14 +781,16 @@
     if (!posClient && $('posMethod').value === 'cuenta') $('posMethod').value = 'efectivo';
   }
 
+  // Lista de clientes con scroll: al hacer clic se ve todo; al escribir filtra por nombre, cédula, teléfono o código.
   async function searchPosClient() {
     const q = $('posClientSearch').value.trim();
-    if (q.length < 2) { $('posClientResults').innerHTML = ''; return; }
     const { clients } = await api('GET', 'clients?q=' + encodeURIComponent(q));
-    $('posClientResults').innerHTML = clients.slice(0, 6).map((c) => `
+    $('posClientResults').innerHTML = clients.map((c) => `
       <div class="result-row" data-pick="${esc(c.id)}">
-        <div><strong>${esc(c.full_name)}</strong> <span class="muted">${esc(c.cedula || '')}</span></div>
-      </div>`).join('') || '<p class="muted">Sin resultados.</p>';
+        <div><strong>${esc(c.full_name)}</strong>
+          <div class="muted">${esc(c.cedula || 'Sin cédula')} · ${esc(c.phone || 'Sin teléfono')}</div></div>
+        ${badge(c.membership_status)}
+      </div>`).join('') || '<p class="muted" style="padding:8px;">Sin resultados.</p>';
   }
 
   async function pickPosClient(id) {
@@ -778,6 +830,302 @@
     } finally {
       setBusy(btn, false);
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Excel (.xlsx) sin librerías externas: una hoja con los detalles.
+  // -------------------------------------------------------------------------
+
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  const crc32 = (bytes) => {
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) crc = CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  };
+  function zipStore(files) {
+    const enc = new TextEncoder();
+    const parts = [];
+    const central = [];
+    let offset = 0;
+    for (const f of files) {
+      const name = enc.encode(f.name);
+      const crc = crc32(f.data);
+      const size = f.data.length;
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0, true);
+      lh.setUint16(8, 0, true); lh.setUint16(10, 0, true); lh.setUint16(12, 0x21, true);
+      lh.setUint32(14, crc, true); lh.setUint32(18, size, true); lh.setUint32(22, size, true);
+      lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+      parts.push(new Uint8Array(lh.buffer), name, f.data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+      ch.setUint16(8, 0, true); ch.setUint16(10, 0, true); ch.setUint16(12, 0, true);
+      ch.setUint16(14, 0x21, true); ch.setUint32(16, crc, true); ch.setUint32(20, size, true);
+      ch.setUint32(24, size, true); ch.setUint16(28, name.length, true); ch.setUint16(30, 0, true);
+      ch.setUint16(32, 0, true); ch.setUint16(34, 0, true); ch.setUint16(36, 0, true);
+      ch.setUint32(38, 0, true); ch.setUint32(42, offset, true);
+      central.push(new Uint8Array(ch.buffer), name);
+      offset += 30 + name.length + size;
+    }
+    const centralSize = central.reduce((s, a) => s + a.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true);
+    end.setUint16(10, files.length, true); end.setUint32(12, centralSize, true); end.setUint32(16, offset, true);
+    return new Blob([...parts, ...central, new Uint8Array(end.buffer)],
+      { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+  function makeXlsx(sheetName, columns, rows) {
+    const enc = new TextEncoder();
+    const x = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
+    const colName = (i) => {
+      let s = '';
+      let n = i + 1;
+      while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+      return s;
+    };
+    const cell = (v, ref, bold) => {
+      const st = bold ? ' s="1"' : '';
+      if (typeof v === 'number' && Number.isFinite(v)) return `<c r="${ref}"${st}><v>${v}</v></c>`;
+      return `<c r="${ref}" t="inlineStr"${st}><is><t xml:space="preserve">${x(v ?? '')}</t></is></c>`;
+    };
+    const all = [columns, ...rows];
+    const sheetData = all.map((row, r) => `<row r="${r + 1}">${row.map((v, c) => cell(v, colName(c) + (r + 1), r === 0)).join('')}</row>`).join('');
+    const cols = columns.map((c, i) => `<col min="${i + 1}" max="${i + 1}" width="${Math.min(45, Math.max(12, String(c).length + 6))}" customWidth="1"/>`).join('');
+    const H = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+    const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+    const RS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+    return zipStore([
+      { name: '[Content_Types].xml', data: enc.encode(`${H}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`) },
+      { name: '_rels/.rels', data: enc.encode(`${H}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RS}/officeDocument" Target="xl/workbook.xml"/></Relationships>`) },
+      { name: 'xl/workbook.xml', data: enc.encode(`${H}<workbook xmlns="${NS}" xmlns:r="${RS}"><sheets><sheet name="${x(sheetName).slice(0, 31)}" sheetId="1" r:id="rId1"/></sheets></workbook>`) },
+      { name: 'xl/_rels/workbook.xml.rels', data: enc.encode(`${H}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RS}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${RS}/styles" Target="styles.xml"/></Relationships>`) },
+      { name: 'xl/styles.xml', data: enc.encode(`${H}<styleSheet xmlns="${NS}"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs></styleSheet>`) },
+      { name: 'xl/worksheets/sheet1.xml', data: enc.encode(`${H}<worksheet xmlns="${NS}"><cols>${cols}</cols><sheetData>${sheetData}</sheetData></worksheet>`) },
+    ]);
+  }
+
+  // -------------------------------------------------------------------------
+  // Detalle de reportes (tarjetas clicables) y búsqueda por código de Yappy
+  // -------------------------------------------------------------------------
+
+  async function openDetail(kind, from, to) {
+    const r = await api('GET', `reports/detail?kind=${encodeURIComponent(kind)}&from=${from}&to=${to}`);
+    const moneyCols = new Set(['Monto', 'Total', 'Saldo']);
+    const period = from === to ? fmtDate(from) : `${fmtDate(from)} al ${fmtDate(to)}`;
+    openModal(`
+      <div class="modal-header">${esc(r.title)}</div>
+      <p class="muted">${esc(period)} · ${r.rows.length} registro${r.rows.length === 1 ? '' : 's'}</p>
+      <div class="detail-table-wrap" style="margin-top:12px;">
+        ${r.rows.length ? `<table><thead><tr>${r.columns.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${
+          r.rows.map((row) => `<tr>${row.map((v, i) => `<td>${moneyCols.has(r.columns[i]) ? money(v) : esc(v ?? '')}</td>`).join('')}</tr>`).join('')
+        }</tbody></table>` : '<p class="muted">Sin registros en este período.</p>'}
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-success" id="detailXlsx" ${r.rows.length ? '' : 'disabled'}>📥 Descargar Excel</button>
+        <button class="btn btn-secondary" data-close-modal>Cerrar</button>
+      </div>`);
+    $('detailXlsx').addEventListener('click', () => {
+      downloadBlob(makeXlsx(r.title, r.columns, r.rows), `${kind}-${from}_${to}.xlsx`);
+    });
+  }
+
+  async function searchYappy() {
+    const ref = $('yappyQ').value.trim();
+    if (!ref) return toast('Escribe el código de Yappy', false);
+    const { results } = await api('GET', 'payments/search?ref=' + encodeURIComponent(ref));
+    $('yappyResults').innerHTML = results.length ? `<div class="table-responsive"><table>
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Cliente</th><th>Código</th><th>Método</th><th>Monto</th></tr></thead>
+        <tbody>${results.map((r) => `<tr>
+          <td>${fmtDate(r.day)} ${timeSql(r.created_at)}</td><td>${esc(r.kind)}</td>
+          <td>${esc(r.client_name || 'Mostrador')}</td><td><strong>${esc(r.reference)}</strong></td>
+          <td>${esc(r.method === 'yapi' ? 'Yappy' : (METHOD_LABEL[r.method] || r.method))}</td><td>${money(r.amount)}</td>
+        </tr>`).join('')}</tbody></table></div>`
+      : '<p class="muted">No hay pagos ni ventas con ese código.</p>';
+  }
+
+  // -------------------------------------------------------------------------
+  // Tarjeta del cliente: QR con su código interno y envío por WhatsApp
+  // -------------------------------------------------------------------------
+
+  let cardClient = null;
+  const loadImageUrl = (src) => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+  async function clientCardBlob(c) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 840;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, 640, 840);
+    ctx.fillStyle = '#2563EB';
+    ctx.fillRect(0, 0, 640, 130);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 42px system-ui, sans-serif';
+    ctx.fillText('MISSION FIT PANAMÁ', 320, 82);
+    ctx.fillStyle = '#0F172A';
+    let size = 40;
+    ctx.font = `bold ${size}px system-ui, sans-serif`;
+    while (ctx.measureText(c.full_name).width > 580 && size > 22) {
+      size -= 2;
+      ctx.font = `bold ${size}px system-ui, sans-serif`;
+    }
+    ctx.fillText(c.full_name, 320, 220);
+    const img = await loadImageUrl(qrDataUrl(c.code, 10));
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, 110, 260, 420, 420);
+    ctx.fillStyle = '#2563EB';
+    ctx.font = 'bold 46px monospace';
+    ctx.fillText(c.code, 320, 735);
+    ctx.fillStyle = '#64748B';
+    ctx.font = '26px system-ui, sans-serif';
+    ctx.fillText('Presenta este QR o código al entrar', 320, 790);
+    return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  }
+  const waText = (c) => `Hola ${c.full_name}, aquí está tu tarjeta de Mission Fit Panamá. Código: ${c.code}. Preséntala o muestra el QR al entrar.`;
+  function openWhatsappChat(phone, text) {
+    const n = waNumber(phone);
+    if (!n) return toast('El cliente no tiene teléfono', false);
+    window.open(`https://wa.me/${n}${text ? '?text=' + encodeURIComponent(text) : ''}`, '_blank', 'noopener');
+  }
+  // Con navegador móvil: abre el menú de compartir (WhatsApp → contacto), como en UTAPP.
+  // En escritorio: descarga la imagen y abre el chat para adjuntarla.
+  async function shareClientCard(c) {
+    const blob = await clientCardBlob(c);
+    const file = new File([blob], `tarjeta-${c.code}.png`, { type: 'image/png' });
+    const text = waText(c);
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], text });
+      } catch (err) {
+        if (err.name !== 'AbortError') throw err;
+      }
+      return;
+    }
+    downloadBlob(blob, `tarjeta-${c.code}.png`);
+    openWhatsappChat(c.phone, text);
+    toast('Imagen descargada: adjúntala en el chat de WhatsApp.');
+  }
+
+  // -------------------------------------------------------------------------
+  // Check-in con cámara: lectura del QR de la tarjeta
+  // -------------------------------------------------------------------------
+
+  let scanStream = null;
+  let scanTimer = null;
+  function stopScanner() {
+    clearInterval(scanTimer);
+    scanTimer = null;
+    if (scanStream) {
+      scanStream.getTracks().forEach((t) => t.stop());
+      scanStream = null;
+    }
+  }
+  function openScanner() {
+    openModal(`
+      <div class="modal-header">📷 Escanear QR del cliente</div>
+      <div class="scan-box"><video id="scanVideo" playsinline muted></video></div>
+      <p class="muted" id="scanHint" style="margin-top:8px;">Apunta la cámara al QR de la tarjeta del cliente.</p>
+      <form id="scanForm" style="margin-top:12px;">
+        <div class="form-group"><label>¿No hay cámara? Escribe o pega el código:</label>
+          <input id="scanCode" class="wide-input" autocomplete="off" placeholder="MF-XXXXXX"></div>
+        <div class="btn-group">
+          <button class="btn btn-primary" type="submit">🔍 Buscar</button>
+          <button class="btn btn-secondary" type="button" data-close-modal>Cerrar</button>
+        </div>
+      </form>`);
+    $('scanForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const code = $('scanCode').value.trim();
+      if (code) handleScanCode(code);
+    });
+    if (!('BarcodeDetector' in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      $('scanHint').textContent = 'Este navegador no puede leer QR con la cámara. Escribe el código de la tarjeta.';
+      $('scanVideo').style.display = 'none';
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then((stream) => {
+        if (!$('scanVideo')) { stream.getTracks().forEach((t) => t.stop()); return; }
+        scanStream = stream;
+        $('scanVideo').srcObject = stream;
+        $('scanVideo').play().catch(() => {});
+        const detector = new BarcodeDetector({ formats: ['qr_code'] });
+        scanTimer = setInterval(async () => {
+          const video = $('scanVideo');
+          if (!video || !video.videoWidth) return;
+          try {
+            const found = await detector.detect(video);
+            if (found.length) handleScanCode(found[0].rawValue);
+          } catch (err) {
+            // Cuadro sin QR legible: se sigue buscando.
+          }
+        }, 350);
+      })
+      .catch(() => {
+        if ($('scanHint')) $('scanHint').textContent = 'No se pudo abrir la cámara. Escribe el código de la tarjeta.';
+      });
+  }
+  async function handleScanCode(raw) {
+    const code = String(raw).trim().toUpperCase();
+    stopScanner();
+    try {
+      const { client } = await api('GET', 'clients/code/' + encodeURIComponent(code));
+      closeModal();
+      go('checkin');
+      await showClientCheckin(client.id);
+    } catch (err) {
+      toast(err.message, false);
+      if ($('scanHint')) $('scanHint').textContent = 'Código no válido. Toca "Escanear" de nuevo o escribe el código.';
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Market: ventas de hoy
+  // -------------------------------------------------------------------------
+
+  async function loadSalesToday() {
+    const { sales } = await api('GET', 'sales');
+    const cobrado = sales.filter((s) => !s.on_account).reduce((t, s) => t + Number(s.total), 0);
+    const cuenta = sales.filter((s) => s.on_account).reduce((t, s) => t + Number(s.total), 0);
+    $('salesSummary').textContent = `${sales.length} venta${sales.length === 1 ? '' : 's'} · cobrado ${money(cobrado)}${cuenta ? ` · a cuenta ${money(cuenta)}` : ''}`;
+    $('salesList').innerHTML = sales.map((s) => `
+      <button class="sale-row" data-sale="${esc(s.id)}">
+        <span class="sale-time">${timeSql(s.created_at)}</span>
+        <span class="sale-main"><strong>${esc(s.client_name || 'Mostrador')}</strong>
+          <span class="muted">${esc(s.items || '')}</span></span>
+        <span class="sale-amt"><strong>${money(s.total)}</strong>
+          <span class="muted">${s.on_account ? '📒 Cuenta' : esc(METHOD_LABEL[s.method] || s.method)}</span></span>
+      </button>`).join('') || '<p class="muted">Aún no hay ventas hoy.</p>';
+  }
+
+  async function openSaleDetail(id) {
+    const { sale, lines } = await api('GET', 'sales/' + encodeURIComponent(id));
+    openModal(`
+      <div class="modal-header">🧾 Venta de ${timeSql(sale.created_at)}</div>
+      <p class="muted">${esc(sale.client_name || 'Mostrador')}${sale.client_phone ? ` · Tel. ${esc(sale.client_phone)}` : ''}</p>
+      <div class="detail-table-wrap" style="margin-top:12px;"><table>
+        <thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>Subtotal</th></tr></thead>
+        <tbody>${lines.map((l) => `<tr><td>${esc(l.icon || '')} ${esc(l.name)}</td><td>${l.qty}</td><td>${money(l.unit_price)}</td><td>${money(l.subtotal)}</td></tr>`).join('')}</tbody>
+      </table></div>
+      <div class="sum-box" style="margin-top:12px;">
+        <div class="sum-row sum-total"><span>Total</span><span>${money(sale.total)}</span></div>
+        <div class="sum-row"><span>Pago</span><span>${sale.on_account ? '📒 Cargado a cuenta' : esc(METHOD_LABEL[sale.method] || sale.method)}</span></div>
+        ${sale.reference ? `<div class="sum-row"><span>Código Yappy</span><strong>${esc(sale.reference)}</strong></div>` : ''}
+      </div>
+      <div class="btn-group"><button class="btn btn-secondary" data-close-modal>Cerrar</button></div>`);
   }
 
   function productFormHtml(p = {}) {
@@ -1004,6 +1352,22 @@
       if (confirm('¿Cerrar sesión para ingresar con otro usuario?')) logout(false);
     });
 
+    $('ciScan').addEventListener('click', openScanner);
+    $('salesList').addEventListener('click', (e) => {
+      const row = e.target.closest('[data-sale]');
+      if (row) openSaleDetail(row.dataset.sale).catch((err) => toast(err.message, false));
+    });
+    $('yappyBtn').addEventListener('click', () => searchYappy().catch((e) => toast(e.message, false)));
+    $('yappyQ').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') searchYappy().catch((err) => toast(err.message, false));
+    });
+    // Tarjetas clicables: en Dashboard usan hoy; en Reportes usan el período elegido.
+    document.querySelectorAll('.stat-card[data-kind]').forEach((el) => el.addEventListener('click', () => {
+      const today = panamaToday();
+      const range = el.closest('#reportesView') ? periodRange() : { from: today, to: today };
+      openDetail(el.dataset.kind, range.from, range.to).catch((err) => toast(err.message, false));
+    }));
+
     // Check-in
     $('ciSearch').addEventListener('input', () => {
       clearTimeout(searchTimer);
@@ -1044,6 +1408,19 @@
     });
     $('modalBox').addEventListener('click', async (e) => {
       if (e.target.closest('[data-close-modal]')) { closeModal(); return; }
+      if (e.target.closest('[data-card-download]') && cardClient) {
+        const c = cardClient;
+        clientCardBlob(c).then((b) => downloadBlob(b, `tarjeta-${c.code}.png`)).catch((err) => toast(err.message, false));
+        return;
+      }
+      if (e.target.closest('[data-card-share]') && cardClient) {
+        shareClientCard(cardClient).catch((err) => toast(err.message, false));
+        return;
+      }
+      if (e.target.closest('[data-wa-chat]') && cardClient) {
+        openWhatsappChat(cardClient.phone, waText(cardClient));
+        return;
+      }
       const b = e.target.closest('[data-out-modal]');
       if (!b) return;
       try {
@@ -1099,6 +1476,7 @@
       clearTimeout(posClientTimer);
       posClientTimer = setTimeout(() => searchPosClient().catch((e) => toast(e.message, false)), 250);
     });
+    $('posClientSearch').addEventListener('focus', () => searchPosClient().catch((e) => toast(e.message, false)));
     $('posClientResults').addEventListener('click', (e) => {
       const row = e.target.closest('[data-pick]');
       if (row) pickPosClient(row.dataset.pick).catch((err) => toast(err.message, false));
@@ -1199,6 +1577,7 @@
     $('modalBox').addEventListener('submit', async (e) => {
       e.preventDefault();
       const form = e.target;
+      if (form.id === 'scanForm') return;
       const btn = e.submitter;
       const data = formData(form);
       setBusy(btn, true);

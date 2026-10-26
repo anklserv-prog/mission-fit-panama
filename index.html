@@ -7,6 +7,12 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap">
     <link rel="stylesheet" href="/app.css">
     <link rel="stylesheet" href="/app-extra.css">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#2563EB">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Mission Fit">
+    <link rel="icon" href="/img/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/img/icon-192.png">
 </head>
 <body>
     <!-- PRIMER ARRANQUE -->
@@ -78,10 +84,10 @@
                 <!-- DASHBOARD -->
                 <div id="dashboardView" class="view">
                     <div class="dashboard-grid">
-                        <div class="stat-card"><div class="stat-label">👥 Clientes activos</div><div class="stat-value" id="kClients">–</div></div>
-                        <div class="stat-card success"><div class="stat-label">💰 Ingresos hoy</div><div class="stat-value" id="kIncome">–</div></div>
-                        <div class="stat-card info"><div class="stat-label">📍 Entradas hoy</div><div class="stat-value" id="kEntries">–</div></div>
-                        <div class="stat-card warning"><div class="stat-label">⏰ Por vencer (7 días)</div><div class="stat-value" id="kExpiring">–</div></div>
+                        <div class="stat-card clickable" data-kind="clients"><div class="stat-label">👥 Clientes activos</div><div class="stat-value" id="kClients">–</div></div>
+                        <div class="stat-card success clickable" data-kind="income"><div class="stat-label">💰 Ingresos hoy</div><div class="stat-value" id="kIncome">–</div></div>
+                        <div class="stat-card info clickable" data-kind="entries"><div class="stat-label">📍 Entradas hoy</div><div class="stat-value" id="kEntries">–</div></div>
+                        <div class="stat-card warning clickable" data-kind="expiring"><div class="stat-label">⏰ Por vencer (7 días)</div><div class="stat-value" id="kExpiring">–</div></div>
                     </div>
                     <div class="card">
                         <div class="card-title"><span class="card-title-icon">📈</span> Últimos 7 días</div>
@@ -103,7 +109,8 @@
                     <div class="card">
                         <div class="card-title"><span class="card-title-icon">🔍</span> Buscar cliente</div>
                         <div class="toolbar">
-                            <input type="search" id="ciSearch" class="wide-input" placeholder="Nombre, cédula o teléfono...">
+                            <input type="search" id="ciSearch" class="wide-input" placeholder="Nombre, cédula, teléfono o código...">
+                            <button class="btn btn-secondary" id="ciScan">📷 Escanear QR</button>
                             <button class="btn btn-secondary" id="ciNewClient">➕ Nuevo cliente</button>
                         </div>
                         <div id="ciResults" class="results"></div>
@@ -147,7 +154,7 @@
                             <div class="form-group">
                                 <label>Cliente (opcional):</label>
                                 <input type="search" id="posClientSearch" class="wide-input" placeholder="Nombre, cédula o teléfono...">
-                                <div id="posClientResults" class="results"></div>
+                                <div id="posClientResults" class="results pos-list"></div>
                                 <div id="posClientInfo"></div>
                             </div>
                             <div id="cartItems" class="cart-lines"></div>
@@ -176,12 +183,16 @@
                         </aside>
                     </div>
 
-                    <div class="card">
-                        <div class="toolbar">
-                            <div class="card-title" style="margin:0;"><span class="card-title-icon">📦</span> Productos e inventario</div>
+                    <details class="card inv-details">
+                        <summary>
+                            <span><span class="card-title-icon">📦</span> Productos e inventario</span>
+                            <span class="inv-caret">▾</span>
+                        </summary>
+                        <div class="toolbar" style="margin-top:14px;">
+                            <span class="muted">Ajusta productos, precios y existencias.</span>
                             <button class="btn btn-primary" id="newProductBtn" style="display:none;">➕ Nuevo Producto</button>
                         </div>
-                        <div class="table-responsive" style="margin-top:16px;">
+                        <div class="table-responsive" style="margin-top:12px;">
                             <table>
                                 <thead>
                                     <tr><th>Producto</th><th>Categoría</th><th>Stock</th><th>Precio</th><th>Estado</th><th></th></tr>
@@ -189,6 +200,14 @@
                                 <tbody id="productsBody"></tbody>
                             </table>
                         </div>
+                    </details>
+
+                    <div class="card">
+                        <div class="toolbar">
+                            <div class="card-title" style="margin:0;"><span class="card-title-icon">🧾</span> Ventas de hoy</div>
+                            <span class="muted" id="salesSummary"></span>
+                        </div>
+                        <div id="salesList" class="sales-list" style="margin-top:12px;"></div>
                     </div>
                 </div>
 
@@ -208,14 +227,23 @@
                         <div class="btn-group"><button class="btn btn-primary" id="repLoad">📈 Actualizar</button></div>
                     </div>
                     <div class="dashboard-grid">
-                        <div class="stat-card success"><div class="stat-label">Ingresos totales</div><div class="stat-value" id="rIncome">–</div></div>
-                        <div class="stat-card"><div class="stat-label">Membresías</div><div class="stat-value" id="rMemberships">–</div></div>
-                        <div class="stat-card info"><div class="stat-label">Entradas</div><div class="stat-value" id="rEntries">–</div></div>
-                        <div class="stat-card"><div class="stat-label">Clientes únicos</div><div class="stat-value" id="rUnique">–</div></div>
-                        <div class="stat-card"><div class="stat-label">Clientes nuevos</div><div class="stat-value" id="rNew">–</div></div>
-                        <div class="stat-card success"><div class="stat-label">Abonos cobrados</div><div class="stat-value" id="rAbonos">–</div></div>
-                        <div class="stat-card warning"><div class="stat-label">Cargado a cuentas</div><div class="stat-value" id="rOnAccount">–</div></div>
-                        <div class="stat-card warning"><div class="stat-label">Por cobrar (total)</div><div class="stat-value" id="rPending">–</div></div>
+                        <div class="stat-card success clickable" data-kind="income"><div class="stat-label">Ingresos totales</div><div class="stat-value" id="rIncome">–</div></div>
+                        <div class="stat-card clickable" data-kind="memberships"><div class="stat-label">Membresías</div><div class="stat-value" id="rMemberships">–</div></div>
+                        <div class="stat-card info clickable" data-kind="entries"><div class="stat-label">Entradas</div><div class="stat-value" id="rEntries">–</div></div>
+                        <div class="stat-card clickable" data-kind="entries"><div class="stat-label">Clientes únicos</div><div class="stat-value" id="rUnique">–</div></div>
+                        <div class="stat-card clickable" data-kind="new_clients"><div class="stat-label">Clientes nuevos</div><div class="stat-value" id="rNew">–</div></div>
+                        <div class="stat-card success clickable" data-kind="abonos"><div class="stat-label">Abonos cobrados</div><div class="stat-value" id="rAbonos">–</div></div>
+                        <div class="stat-card warning clickable" data-kind="on_account"><div class="stat-label">Cargado a cuentas</div><div class="stat-value" id="rOnAccount">–</div></div>
+                        <div class="stat-card warning clickable" data-kind="pending"><div class="stat-label">Por cobrar (total)</div><div class="stat-value" id="rPending">–</div></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title"><span class="card-title-icon">🔎</span> Buscar pago por código de Yappy</div>
+                        <p class="muted">Útil cuando hay varias transacciones con montos parecidos: escribe el código.</p>
+                        <div class="toolbar" style="margin-top:10px;">
+                            <input id="yappyQ" class="wide-input" autocomplete="off" placeholder="Ej: 1A2B3C4D">
+                            <button class="btn btn-primary" id="yappyBtn">Buscar</button>
+                        </div>
+                        <div id="yappyResults" style="margin-top:12px;"></div>
                     </div>
                     <div class="card">
                         <div class="card-title">Por día</div>
@@ -303,6 +331,12 @@
 
     <div id="toast" class="toast"></div>
 
+    <script src="/vendor/qrcode.js"></script>
     <script src="/app.js"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+      }
+    </script>
 </body>
 </html>

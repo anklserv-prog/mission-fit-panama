@@ -346,3 +346,52 @@
     .inside-row .btn-danger { grid-column: 2; grid-row: 1; }
     .inside-card { grid-template-columns: 1fr; }
 }
+
+/* Modales de detalle y tarjeta del cliente */
+.modal-content { max-width: min(680px, 94vw); max-height: 92vh; overflow-y: auto; }
+.detail-table-wrap { max-height: 55vh; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+.detail-table-wrap table { min-width: 100%; }
+.detail-table-wrap th { position: sticky; top: 0; background: var(--bg-secondary); }
+.client-card-box { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.qr-img { width: 160px; height: 160px; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: #fff; image-rendering: pixelated; }
+.client-code { font-family: monospace; font-size: 22px; font-weight: 800; letter-spacing: 2px; margin: 4px 0 10px; }
+.card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.scan-box video { width: 100%; max-height: 320px; object-fit: cover; border-radius: 12px; background: #0F172A; }
+
+/* Clickable stat cards */
+.stat-card.clickable { cursor: pointer; transition: transform 0.12s, box-shadow 0.12s; }
+.stat-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08); }
+.stat-card.clickable::after { content: 'Ver detalle ›'; display: block; margin-top: 6px; font-size: 11px; color: var(--primary); font-weight: 600; }
+
+/* Market: lista de clientes con scroll */
+.pos-list { max-height: 280px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; margin-top: 8px; padding: 4px; }
+.pos-list .result-row { margin: 0; }
+
+/* Market: productos colapsable */
+.inv-details > summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 16px; }
+.inv-details > summary::-webkit-details-marker { display: none; }
+.inv-caret { transition: transform 0.2s; color: var(--text-secondary); }
+.inv-details[open] .inv-caret { transform: rotate(180deg); }
+.inv-details[open] > summary { margin-bottom: 4px; }
+
+/* Market: ventas de hoy */
+.sales-list { max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.sale-row {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #fff;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.sale-row:hover { background: var(--bg-tertiary); }
+.sale-time { font-size: 13px; color: var(--text-secondary); font-weight: 600; }
+.sale-main { min-width: 0; display: flex; flex-direction: column; }
+.sale-main > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.sale-amt { display: flex; flex-direction: column; align-items: flex-end; font-size: 14px; }
