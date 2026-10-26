@@ -658,11 +658,11 @@
       <div class="client-card-box">
         <img id="qrImg" class="qr-img" alt="QR del cliente">
         <div>
-          <div class="muted">Código interno</div>
+          <div class="muted">Código interno · <span id="cardShareInfo"></span></div>
           <div class="client-code">${esc(client.code || '—')}</div>
           <div class="card-actions">
             <button class="btn btn-secondary btn-small" data-card-download>⬇️ Descargar tarjeta</button>
-            <button class="btn btn-success btn-small" data-card-share>📤 Enviar por WhatsApp</button>
+            <button class="btn btn-success btn-small" data-card-share ${cardLimited(client) ? 'disabled' : ''}>📤 Enviar por WhatsApp</button>
             <button class="btn btn-secondary btn-small" data-wa-chat>💬 Abrir chat</button>
           </div>
         </div>
@@ -698,6 +698,7 @@
       }</tbody></table>` : '<p class="muted">Sin pagos registrados.</p>'}
     `);
     cardClient = client;
+    refreshCardShareInfo();
     if (client.code) $('qrImg').src = qrDataUrl(client.code, 4);
   }
 
@@ -1211,7 +1212,38 @@
   }
   // Con navegador móvil: abre el menú de compartir (WhatsApp → contacto), como en UTAPP.
   // En escritorio: descarga la imagen y abre el chat para adjuntarla.
+  // Límite de envíos: el cajero (recepción) solo puede enviar la tarjeta una vez por cliente.
+  // Administrador y creador pueden enviarla sin límite.
+  const cardLimited = (client) => me.role === 'user' && Number(client.card_shares || 0) >= 1;
+  function refreshCardShareInfo() {
+    if (!cardClient) return;
+    const n = Number(cardClient.card_shares || 0);
+    const info = $('cardShareInfo');
+    if (info) info.textContent = n ? `Tarjeta enviada ${n} ${n === 1 ? 'vez' : 'veces'}` : 'Tarjeta sin enviar';
+    const btn = document.querySelector('[data-card-share]');
+    if (btn) {
+      const limited = cardLimited(cardClient);
+      btn.disabled = limited;
+      btn.textContent = limited ? '📤 Ya enviada (solo admin)' : '📤 Enviar por WhatsApp';
+    }
+  }
+  async function recordCardShare(c) {
+    try {
+      const r = await api('POST', 'clients/' + encodeURIComponent(c.id) + '/card-share');
+      if (cardClient && cardClient.id === c.id) cardClient.card_shares = r.card_shares;
+      refreshCardShareInfo();
+    } catch (err) {
+      toast(err.message, false);
+    }
+  }
   async function shareClientCard(c) {
+    // Revisa el límite con datos actuales antes de preparar la imagen.
+    const { client: fresh } = await api('GET', 'clients/' + encodeURIComponent(c.id));
+    if (cardLimited(fresh)) {
+      toast('Esta tarjeta ya se envió. Solo el administrador puede enviar otra copia.', false);
+      if (cardClient && cardClient.id === c.id) { cardClient.card_shares = fresh.card_shares; refreshCardShareInfo(); }
+      return;
+    }
     const blob = await clientCardBlob(c);
     const file = new File([blob], `tarjeta-${c.code}.png`, { type: 'image/png' });
     const text = waText(c);
@@ -1220,12 +1252,15 @@
         await navigator.share({ files: [file], text });
       } catch (err) {
         if (err.name !== 'AbortError') throw err;
+        return; // Canceló el envío: no cuenta.
       }
+      await recordCardShare(c);
       return;
     }
     downloadBlob(blob, `tarjeta-${c.code}.png`);
     openWhatsappChat(c.phone, text);
     toast('Imagen descargada: adjúntala en el chat de WhatsApp.');
+    await recordCardShare(c);
   }
 
   // -------------------------------------------------------------------------
