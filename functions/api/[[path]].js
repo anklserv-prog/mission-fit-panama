@@ -4,6 +4,7 @@ import {
   HttpError, json, fail, readBody, newId, hashPassword, verifyPassword, sha256Hex, randomToken,
   todayPanama, addDays, daysBetween, membershipStatus, ROLE_RANK,
   requireString, optString, requireNumber, requireInt, requireMethod, requireDay, isUniqueError, requireIcon,
+  requireYappyRef,
 } from '../../lib/util.js';
 
 const SESSION_DAYS = 30;
@@ -342,11 +343,13 @@ route('POST', /^memberships$/, 'user', async ({ db, user, body }) => {
   const clientId = requireString(body.client_id, 'Cliente');
   const planId = requireString(body.plan_id, 'Plan');
   const method = requireMethod(body.method);
+  const reference = method === 'yapi' ? requireYappyRef(body.reference) : null;
 
   const client = await db.prepare('SELECT id FROM clients WHERE id = ? AND active = 1').bind(clientId).first();
   if (!client) throw new HttpError(404, 'Cliente no encontrado');
   const plan = await db.prepare('SELECT * FROM plans WHERE id = ? AND active = 1').bind(planId).first();
   if (!plan) throw new HttpError(404, 'Plan no encontrado');
+  if (reference) await assertYappyRefFree(db, reference);
 
   const today = todayPanama();
   const latest = (await latestMemberships(db, clientId)).get(clientId);
@@ -360,13 +363,13 @@ route('POST', /^memberships$/, 'user', async ({ db, user, body }) => {
       'INSERT INTO memberships (id, client_id, plan_id, start_date, end_date, amount) VALUES (?, ?, ?, ?, ?, ?)',
     ).bind(membershipId, clientId, plan.id, start, end, plan.price),
     db.prepare(
-      'INSERT INTO payments (id, client_id, membership_id, amount, method, day, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    ).bind(paymentId, clientId, membershipId, plan.price, method, today, user.id),
+      'INSERT INTO payments (id, client_id, membership_id, amount, method, day, created_by, reference) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    ).bind(paymentId, clientId, membershipId, plan.price, method, today, user.id, reference),
   ]);
 
   return json({
     membership: { id: membershipId, plan_name: plan.name, start_date: start, end_date: end },
-    payment: { id: paymentId, amount: plan.price, method },
+    payment: { id: paymentId, amount: plan.price, method, reference },
   }, 201);
 });
 
@@ -492,12 +495,15 @@ route('POST', /^sales$/, 'user', async ({ db, user, body }) => {
   // "cuenta" no es un medio de pago: la venta queda cargada al saldo del cliente.
   const onAccount = body.method === 'cuenta';
   const method = onAccount ? 'efectivo' : requireMethod(body.method);
+  const reference = !onAccount && method === 'yapi' ? requireYappyRef(body.reference) : null;
   const clientId = optString(body.client_id, 80);
   if (onAccount && !clientId) throw new HttpError(400, 'Para cargar a cuenta debes seleccionar un cliente');
   if (clientId) {
     const c = await db.prepare('SELECT id FROM clients WHERE id = ? AND active = 1').bind(clientId).first();
     if (!c) throw new HttpError(404, 'Cliente no encontrado');
   }
+
+  if (reference) await assertYappyRefFree(db, reference);
 
   // Agrupa líneas repetidas y valida stock antes de escribir.
   const wanted = new Map();
@@ -521,8 +527,8 @@ route('POST', /^sales$/, 'user', async ({ db, user, body }) => {
   const saleId = newId();
   const stmts = [
     db.prepare(
-      'INSERT INTO sales (id, client_id, total, method, day, created_by, on_account) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    ).bind(saleId, clientId, total, method, today, user.id, onAccount ? 1 : 0),
+      'INSERT INTO sales (id, client_id, total, method, day, created_by, on_account, reference) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    ).bind(saleId, clientId, total, method, today, user.id, onAccount ? 1 : 0, reference),
   ];
   if (onAccount) {
     stmts.push(
@@ -559,6 +565,14 @@ route('POST', /^sales$/, 'user', async ({ db, user, body }) => {
 // ---------------------------------------------------------------------------
 // Cuenta del cliente (cargos por ventas y abonos)
 // ---------------------------------------------------------------------------
+
+// Un código de Yappy no puede usarse dos veces, ni en cobros de membresía ni en ventas.
+async function assertYappyRefFree(db, reference) {
+  const dup = await db.prepare(
+    `SELECT 1 FROM payments WHERE reference = ? UNION ALL SELECT 1 FROM sales WHERE reference = ? LIMIT 1`,
+  ).bind(reference, reference).first();
+  if (dup) throw new HttpError(409, `El código de Yappy ${reference} ya fue registrado`);
+}
 
 async function clientBalance(db, clientId) {
   const row = await db.prepare(
