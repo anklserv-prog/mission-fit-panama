@@ -903,8 +903,8 @@ route('GET', /^reports\/detail$/, 'admin', async ({ db, url }) => {
     ).bind(...range).all();
     return json({
       title: 'Membresías vendidas',
-      columns: ['Fecha', 'Cliente', 'Teléfono', 'Plan', 'Inicio', 'Vence', 'Método', 'Monto', 'Código Yappy'],
-      rows: results.map((r) => [r.day, r.full_name || '', r.phone || '', r.plan || '', r.start_date || '', r.end_date || '', r.method, r.amount, r.reference || '']),
+      columns: ['Fecha', 'Cliente', 'Plan', 'Vence', 'Método', 'Monto', 'Código Yappy'],
+      rows: results.map((r) => [r.day, r.full_name || '', r.plan || '', r.end_date || '', r.method, r.amount, r.reference || '']),
     });
   }
 
