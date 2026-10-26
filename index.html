@@ -296,6 +296,15 @@
                             <div class="form-row">
                                 <div class="form-group" style="grid-column:1 / -1;"><label>Horario de atención (lo ve el socio en su portal):</label><input type="text" name="schedule" placeholder="Ej. Lunes a viernes 5:00 a. m. – 10:00 p. m. · Sábados 6:00 a. m. – 6:00 p. m."></div>
                             </div>
+                            <div class="form-row">
+                                <div class="form-group" style="grid-column:1 / -1;"><label>Entrada por código QR:</label>
+                                    <select name="rotating_qr">
+                                        <option value="0">Acepta la tarjeta fija y el QR del portal (transición)</option>
+                                        <option value="1">Solo el QR rotativo del portal (más seguro)</option>
+                                    </select>
+                                    <span class="muted">Con "solo el QR rotativo", cada socio debe tener acceso al portal antes de activarlo.</span>
+                                </div>
+                            </div>
                             <div class="btn-group"><button class="btn btn-primary" type="submit">💾 Guardar cambios</button></div>
                         </form>
                     </div>

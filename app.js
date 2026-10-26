@@ -1360,12 +1360,12 @@
   let scanBusy = false;
   async function handleScanCode(raw) {
     if (scanBusy) return;
-    const code = String(raw).trim().toUpperCase();
+    const code = String(raw).trim();
     scanBusy = true;
     stopScanner();
-    if ($('scanHint')) $('scanHint').textContent = `Buscando ${code}…`;
+    if ($('scanHint')) $('scanHint').textContent = 'Buscando cliente…';
     try {
-      const { client } = await api('GET', 'clients/code/' + encodeURIComponent(code));
+      const { client } = await api('GET', 'scan/' + encodeURIComponent(code));
       scanBusy = false;
       closeModal();
       go('checkin');
