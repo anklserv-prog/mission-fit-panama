@@ -929,8 +929,12 @@
     return new Blob([...parts, ...central, new Uint8Array(end.buffer)],
       { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   }
-  function makeXlsx(sheetName, columns, rows) {
+  // Excel con formato: nombre del negocio, título, período, tabla con filtros y fila de totales (SUBTOTAL,
+  // así los totales cambian al filtrar en Excel).
+  function makeXlsx({ business, title, period, columns, rows, moneyCols = [], sheetName }) {
     const enc = new TextEncoder();
+    const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+    const RS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
     const x = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
     const colName = (i) => {
       let s = '';
@@ -938,49 +942,187 @@
       while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
       return s;
     };
-    const cell = (v, ref, bold) => {
-      const st = bold ? ' s="1"' : '';
-      if (typeof v === 'number' && Number.isFinite(v)) return `<c r="${ref}"${st}><v>${v}</v></c>`;
-      return `<c r="${ref}" t="inlineStr"${st}><is><t xml:space="preserve">${x(v ?? '')}</t></is></c>`;
+    // Nombres de columna únicos (Excel exige encabezados distintos en una tabla).
+    const seen = {};
+    const names = columns.map((c) => {
+      const base = String(c);
+      seen[base] = (seen[base] || 0) + 1;
+      return seen[base] === 1 ? base : `${base} ${seen[base]}`;
+    });
+    // Fechas ISO (2026-10-23) se muestran como 23/10/2026.
+    const fixValue = (v) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v.split('-').reverse().join('/') : v);
+    // Estilos (índices en cellXfs, ver styles.xml abajo).
+    const ST = { business: 1, title: 2, period: 3, head: 4, text: 5, money: 6, num: 7, totLabel: 8, totMoney: 9, totNum: 10 };
+    const nCols = names.length;
+    const lastCol = colName(nCols - 1);
+    const HEAD_ROW = 4;
+    const firstData = HEAD_ROW + 1;
+    const lastData = HEAD_ROW + rows.length;
+    const hasRows = rows.length > 0;
+    const isMoney = (i) => moneyCols.includes(columns[i]);
+    const isNum = (i) => hasRows && rows.every((r) => r[i] === null || r[i] === undefined || typeof r[i] === 'number');
+    const cellXml = (v, ref, style) => {
+      if (typeof v === 'number' && Number.isFinite(v)) return `<c r="${ref}" s="${style}"><v>${v}</v></c>`;
+      if (v === null || v === undefined || v === '') return `<c r="${ref}" s="${style}"/>`;
+      return `<c r="${ref}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${x(fixValue(v))}</t></is></c>`;
     };
-    const all = [columns, ...rows];
-    const sheetData = all.map((row, r) => `<row r="${r + 1}">${row.map((v, c) => cell(v, colName(c) + (r + 1), r === 0)).join('')}</row>`).join('');
-    const cols = columns.map((c, i) => `<col min="${i + 1}" max="${i + 1}" width="${Math.min(45, Math.max(12, String(c).length + 6))}" customWidth="1"/>`).join('');
+    const formulaXml = (ref, style, f) => `<c r="${ref}" s="${style}"><f>${x(f)}</f></c>`;
+
+    // Ancho de columna según el contenido más largo.
+    const widths = names.map((n, i) => {
+      let max = String(n).length;
+      for (const r of rows) max = Math.max(max, String(fixValue(r[i]) ?? '').length + (isMoney(i) ? 2 : 0));
+      return Math.min(48, Math.max(12, Math.round(max * 1.1) + 3));
+    });
+    const cols = widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('');
+
+    const bizRow = `<row r="1" ht="28" customHeight="1">${cellXml(business, 'A1', ST.business)}</row>`;
+    const titleRow = `<row r="2" ht="20" customHeight="1">${cellXml(title, 'A2', ST.title)}</row>`;
+    const periodRow = `<row r="3">${cellXml(period, 'A3', ST.period)}</row>`;
+    const headRow = `<row r="${HEAD_ROW}" ht="24" customHeight="1">${names.map((n, i) => cellXml(n, colName(i) + HEAD_ROW, ST.head)).join('')}</row>`;
+    const dataRows = rows.map((r, k) => {
+      const rn = firstData + k;
+      return `<row r="${rn}">${r.map((v, i) => {
+        const style = isMoney(i) ? ST.money : (isNum(i) ? ST.num : ST.text);
+        return cellXml(v, colName(i) + rn, style);
+      }).join('')}</row>`;
+    }).join('');
+    let totals = '';
+    if (hasRows) {
+      const tRow = lastData + 1;
+      const cells = names.map((_, i) => {
+        const ref = colName(i) + tRow;
+        if (i === 0) return cellXml('Total (visible)', ref, ST.totLabel);
+        if (isMoney(i) || isNum(i)) return formulaXml(ref, isMoney(i) ? ST.totMoney : ST.totNum, `SUBTOTAL(109,${colName(i)}${firstData}:${colName(i)}${lastData})`);
+        return cellXml('', ref, ST.totLabel);
+      }).join('');
+      const cRow = tRow + 1;
+      totals = `<row r="${tRow}">${cells}</row>` +
+        `<row r="${cRow}">${cellXml('Registros visibles', `A${cRow}`, ST.totLabel)}${formulaXml(`B${cRow}`, ST.totNum, `SUBTOTAL(103,A${firstData}:A${lastData})`)}</row>`;
+    }
+    const merges = [`A1:${lastCol}1`, `A2:${lastCol}2`, `A3:${lastCol}3`];
+    const sheetXml = `<worksheet xmlns="${NS}" xmlns:r="${RS}">` +
+      `<sheetViews><sheetView workbookViewId="0" showGridLines="0"><pane ySplit="${HEAD_ROW}" topLeftCell="A${firstData}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` +
+      `<cols>${cols}</cols>` +
+      `<sheetData>${bizRow}${titleRow}${periodRow}${headRow}${dataRows}${totals}</sheetData>` +
+      `<mergeCells count="${merges.length}">${merges.map((m) => `<mergeCell ref="${m}"/>`).join('')}</mergeCells>` +
+      `<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>` +
+      `<pageSetup orientation="landscape"/>` +
+      (hasRows ? `<tableParts count="1"><tablePart r:id="rId1"/></tableParts>` : '') +
+      `</worksheet>`;
+
     const H = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
-    const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
-    const RS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
-    return zipStore([
-      { name: '[Content_Types].xml', data: enc.encode(`${H}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`) },
+    const tableRef = `A${HEAD_ROW}:${lastCol}${lastData}`;
+    const tableXml = `${H}<table xmlns="${NS}" id="1" name="Datos" displayName="Datos" ref="${tableRef}" totalsRowShown="0"><autoFilter ref="${tableRef}"/><tableColumns count="${nCols}">${names.map((n, i) => `<tableColumn id="${i + 1}" name="${x(n)}"/>`).join('')}</tableColumns><tableStyleInfo name="TableStyleMedium2" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/></table>`;
+    const stylesXml = `${H}<styleSheet xmlns="${NS}">` +
+      `<numFmts count="1"><numFmt numFmtId="164" formatCode="&quot;$&quot;#,##0.00"/></numFmts>` +
+      `<fonts count="6">` +
+      `<font><sz val="11"/><name val="Calibri"/></font>` +
+      `<font><b/><sz val="16"/><color rgb="FF1E3A8A"/><name val="Calibri"/></font>` +
+      `<font><b/><sz val="12"/><color rgb="FF0F172A"/><name val="Calibri"/></font>` +
+      `<font><i/><sz val="10"/><color rgb="FF64748B"/><name val="Calibri"/></font>` +
+      `<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>` +
+      `<font><b/><sz val="11"/><color rgb="FF0F172A"/><name val="Calibri"/></font>` +
+      `</fonts>` +
+      `<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>` +
+      `<fill><patternFill patternType="solid"><fgColor rgb="FF2563EB"/><bgColor indexed="64"/></patternFill></fill>` +
+      `<fill><patternFill patternType="solid"><fgColor rgb="FFF1F5F9"/><bgColor indexed="64"/></patternFill></fill></fills>` +
+      `<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>` +
+      `<border><left style="thin"><color rgb="FFCBD5E1"/></left><right style="thin"><color rgb="FFCBD5E1"/></right><top style="thin"><color rgb="FFCBD5E1"/></top><bottom style="thin"><color rgb="FFCBD5E1"/></bottom><diagonal/></border></borders>` +
+      `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
+      `<cellXfs count="11">` +
+      `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>` +
+      `<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>` +
+      `<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>` +
+      `<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>` +
+      `<xf numFmtId="0" fontId="4" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>` +
+      `<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>` +
+      `<xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>` +
+      `<xf numFmtId="1" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>` +
+      `<xf numFmtId="0" fontId="5" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>` +
+      `<xf numFmtId="164" fontId="5" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>` +
+      `<xf numFmtId="1" fontId="5" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>` +
+      `</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+    const contentTypes = `${H}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${hasRows ? '<Override PartName="/xl/tables/table1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>' : ''}</Types>`;
+    const files = [
+      { name: '[Content_Types].xml', data: enc.encode(contentTypes) },
       { name: '_rels/.rels', data: enc.encode(`${H}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RS}/officeDocument" Target="xl/workbook.xml"/></Relationships>`) },
-      { name: 'xl/workbook.xml', data: enc.encode(`${H}<workbook xmlns="${NS}" xmlns:r="${RS}"><sheets><sheet name="${x(sheetName).slice(0, 31)}" sheetId="1" r:id="rId1"/></sheets></workbook>`) },
+      { name: 'xl/workbook.xml', data: enc.encode(`${H}<workbook xmlns="${NS}" xmlns:r="${RS}"><sheets><sheet name="${x(String(sheetName || 'Reporte')).slice(0, 31)}" sheetId="1" r:id="rId1"/></sheets></workbook>`) },
       { name: 'xl/_rels/workbook.xml.rels', data: enc.encode(`${H}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RS}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${RS}/styles" Target="styles.xml"/></Relationships>`) },
-      { name: 'xl/styles.xml', data: enc.encode(`${H}<styleSheet xmlns="${NS}"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs></styleSheet>`) },
-      { name: 'xl/worksheets/sheet1.xml', data: enc.encode(`${H}<worksheet xmlns="${NS}"><cols>${cols}</cols><sheetData>${sheetData}</sheetData></worksheet>`) },
-    ]);
+      { name: 'xl/styles.xml', data: enc.encode(stylesXml) },
+      { name: 'xl/worksheets/sheet1.xml', data: enc.encode(`${H}${sheetXml}`) },
+    ];
+    if (hasRows) {
+      files.push({ name: 'xl/worksheets/_rels/sheet1.xml.rels', data: enc.encode(`${H}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RS}/table" Target="../tables/table1.xml"/></Relationships>`) });
+      files.push({ name: 'xl/tables/table1.xml', data: enc.encode(tableXml) });
+    }
+    return zipStore(files);
   }
 
   // -------------------------------------------------------------------------
-  // Detalle de reportes (tarjetas clicables) y búsqueda por código de Yappy
+  // Detalle de reportes (tarjetas clicables) con buscador
   // -------------------------------------------------------------------------
 
   async function openDetail(kind, from, to) {
-    const r = await api('GET', `reports/detail?kind=${encodeURIComponent(kind)}&from=${from}&to=${to}`);
-    const moneyCols = new Set(['Monto', 'Total', 'Saldo']);
+    const [r, st] = await Promise.all([
+      api('GET', `reports/detail?kind=${encodeURIComponent(kind)}&from=${from}&to=${to}`),
+      api('GET', 'settings').catch(() => ({ settings: {} })),
+    ]);
+    const business = st.settings?.gym_name || 'Mission Fit Panamá';
+    const moneyCols = ['Monto', 'Total', 'Saldo'];
+    const moneyIdx = r.columns.findIndex((c) => moneyCols.includes(c));
     const period = from === to ? fmtDate(from) : `${fmtDate(from)} al ${fmtDate(to)}`;
+    const norm = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    // Palabras de búsqueda: los números admiten "$" y coma decimal ("$199,99" = 199.99).
+    const words = () => ($('detailSearch')?.value || '').trim().split(/\s+/).filter(Boolean)
+      .map((t) => (/^[\d.,$]+$/.test(t) ? t.replace(/\$/g, '').replace(',', '.') : norm(t)));
+    const matches = (row, w) => {
+      const hay = norm(row.map((v) => v ?? '').join(' '));
+      return w.every((term) => hay.includes(norm(term)));
+    };
+    let shown = r.rows;
+    const cellHtml = (v, i) => (moneyCols.includes(r.columns[i]) ? money(v) : esc(v ?? ''));
+    const renderBody = () => {
+      const w = words();
+      shown = w.length ? r.rows.filter((row) => matches(row, w)) : r.rows;
+      $('detailBody').innerHTML = shown.map((row) => `<tr>${row.map((v, i) => `<td>${cellHtml(v, i)}</td>`).join('')}</tr>`).join('')
+        || `<tr><td colspan="${r.columns.length}" class="muted">Ningún registro coincide con la búsqueda.</td></tr>`;
+      const total = moneyIdx >= 0 ? shown.reduce((s, row) => s + Number(row[moneyIdx] || 0), 0) : null;
+      $('detailCount').textContent = `${shown.length} de ${r.rows.length} registro${r.rows.length === 1 ? '' : 's'}`
+        + (total !== null ? ` · Total ${money(total)}` : '');
+      $('detailXlsx').disabled = shown.length === 0;
+    };
     openModal(`
       <div class="modal-header">${esc(r.title)}</div>
-      <p class="muted">${esc(period)} · ${r.rows.length} registro${r.rows.length === 1 ? '' : 's'}</p>
-      <div class="detail-table-wrap" style="margin-top:12px;">
-        ${r.rows.length ? `<table><thead><tr>${r.columns.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${
-          r.rows.map((row) => `<tr>${row.map((v, i) => `<td>${moneyCols.has(r.columns[i]) ? money(v) : esc(v ?? '')}</td>`).join('')}</tr>`).join('')
-        }</tbody></table>` : '<p class="muted">Sin registros en este período.</p>'}
+      <p class="muted">${esc(period)}</p>
+      ${r.rows.length ? `
+      <div class="form-group" style="margin-top:12px;">
+        <input id="detailSearch" class="wide-input" type="search" autocomplete="off" placeholder="Buscar por monto, código de Yappy, persona o producto...">
       </div>
+      <p class="muted" id="detailCount"></p>
+      <div class="detail-table-wrap" style="margin-top:8px;">
+        <table><thead><tr>${r.columns.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody id="detailBody"></tbody></table>
+      </div>` : '<p class="muted" style="margin-top:12px;">Sin registros en este período.</p>'}
       <div class="btn-group">
         <button class="btn btn-success" id="detailXlsx" ${r.rows.length ? '' : 'disabled'}>📥 Descargar Excel</button>
         <button class="btn btn-secondary" data-close-modal>Cerrar</button>
       </div>`);
+    if (r.rows.length) {
+      $('detailSearch').addEventListener('input', renderBody);
+      renderBody();
+    }
     $('detailXlsx').addEventListener('click', () => {
-      downloadBlob(makeXlsx(r.title, r.columns, r.rows), `${kind}-${from}_${to}.xlsx`);
+      const slug = norm(business).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'reporte';
+      const blob = makeXlsx({
+        business,
+        title: r.title,
+        period: `Período: ${period} · ${shown.length} registro${shown.length === 1 ? '' : 's'}`,
+        columns: r.columns,
+        rows: shown,
+        moneyCols,
+        sheetName: r.title,
+      });
+      downloadBlob(blob, `${slug}-${kind}-${from}_${to}.xlsx`);
     });
   }
 
