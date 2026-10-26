@@ -302,9 +302,15 @@
     .filter(([v]) => v !== 'cuenta')
     .map(([v, l]) => `<option value="${v}">${v === 'yapi' ? 'Yappy' : l}</option>`).join('');
 
+  let checkinOpen = null; // entrada abierta del cliente mostrado (si está dentro)
+
   async function showClientCheckin(id) {
-    const { client } = await api('GET', 'clients/' + encodeURIComponent(id));
+    const [{ client }, { entries }] = await Promise.all([
+      api('GET', 'clients/' + encodeURIComponent(id)),
+      api('GET', 'entries/open'),
+    ]);
     checkinClient = client;
+    checkinOpen = entries.find((en) => en.client_id === client.id) || null;
     const paidDailyToday = isDailyPlanName(client.membership_plan)
       && (client.membership_status === 'activa' || client.membership_status === 'por_vencer');
     checkinMode = paidDailyToday ? 'diario' : 'miembro';
@@ -333,10 +339,15 @@
       </div>`;
 
     $('ciDetail').style.display = 'block';
-    $('ciDetail').innerHTML = header + tabs +
-      (checkinMode === 'miembro'
+    const mins = checkinOpen ? Math.round((Date.now() - checkinOpen.check_in_at) / 60000) : 0;
+    const insideBox = `
+      <div class="status-box ok" style="margin-top:12px;">🏋️ <strong>Ya está dentro del gimnasio</strong>
+        desde ${checkinOpen ? timeOf(checkinOpen.check_in_at) : ''} · ${mins} min</div>
+      <div class="btn-group"><button class="btn btn-danger" id="ciExit">🚪 Registrar salida</button></div>`;
+    $('ciDetail').innerHTML = header + tabs + (checkinOpen ? insideBox
+      : (checkinMode === 'miembro'
         ? miembroPanel(client, st, active, daily, memberActive)
-        : diarioPanel(client, active, daily, memberActive));
+        : diarioPanel(client, active, daily, memberActive)));
     bindCheckinPanel();
   }
 
@@ -406,6 +417,21 @@
 
   function bindCheckinPanel() {
     const client = checkinClient;
+
+    $('ciExit')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      setBusy(btn, true);
+      try {
+        const r = await api('POST', `entries/${encodeURIComponent(checkinOpen.id)}/check-out`);
+        toast(`Salida registrada: ${client.full_name} (${r.entry.minutes} min)`);
+        loadOpenEntries();
+        showClientCheckin(client.id);
+      } catch (err) {
+        toast(err.message, false);
+      } finally {
+        setBusy(btn, false);
+      }
+    });
 
     // Guardar el botón antes de cualquier await: e.currentTarget queda en null después.
     $('ciEnter')?.addEventListener('click', async (e) => {
@@ -1051,6 +1077,10 @@
       const code = $('scanCode').value.trim();
       if (code) handleScanCode(code);
     });
+    startCamera();
+  }
+  function startCamera() {
+    if (!$('scanVideo') || scanStream || scanTimer) return;
     if (!('BarcodeDetector' in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       $('scanHint').textContent = 'Este navegador no puede leer QR con la cámara. Escribe el código de la tarjeta.';
       $('scanVideo').style.display = 'none';
@@ -1065,10 +1095,10 @@
         const detector = new BarcodeDetector({ formats: ['qr_code'] });
         scanTimer = setInterval(async () => {
           const video = $('scanVideo');
-          if (!video || !video.videoWidth) return;
+          if (!video || !video.videoWidth || scanBusy) return;
           try {
             const found = await detector.detect(video);
-            if (found.length) handleScanCode(found[0].rawValue);
+            if (found.length && !scanBusy) handleScanCode(found[0].rawValue);
           } catch (err) {
             // Cuadro sin QR legible: se sigue buscando.
           }
@@ -1078,17 +1108,26 @@
         if ($('scanHint')) $('scanHint').textContent = 'No se pudo abrir la cámara. Escribe el código de la tarjeta.';
       });
   }
+  let scanBusy = false;
   async function handleScanCode(raw) {
+    if (scanBusy) return;
     const code = String(raw).trim().toUpperCase();
+    scanBusy = true;
     stopScanner();
+    if ($('scanHint')) $('scanHint').textContent = `Buscando ${code}…`;
     try {
       const { client } = await api('GET', 'clients/code/' + encodeURIComponent(code));
+      scanBusy = false;
       closeModal();
       go('checkin');
       await showClientCheckin(client.id);
+      toast(`Cliente encontrado: ${client.full_name}`);
     } catch (err) {
+      scanBusy = false;
       toast(err.message, false);
-      if ($('scanHint')) $('scanHint').textContent = 'Código no válido. Toca "Escanear" de nuevo o escribe el código.';
+      const canScan = 'BarcodeDetector' in window && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+      if ($('scanVideo') && canScan) startCamera();
+      if ($('scanHint')) $('scanHint').textContent = `${err.message}. Intenta de nuevo con otra tarjeta o escribe el código.`;
     }
   }
 
