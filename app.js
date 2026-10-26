@@ -1079,33 +1079,60 @@
     });
     startCamera();
   }
+  // Lectura de QR: usa el lector nativo si el navegador lo trae (Chrome Android) y, si no,
+  // decodifica cada cuadro con jsQR (iPad/iPhone Safari, Firefox, escritorio).
+  const canUseCamera = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  let scanCanvas = null;
+  function makeReader(video) {
+    if ('BarcodeDetector' in window) {
+      const detector = new BarcodeDetector({ formats: ['qr_code'] });
+      return async () => {
+        if (!video.videoWidth || scanBusy) return;
+        try {
+          const found = await detector.detect(video);
+          if (found.length) handleScanCode(found[0].rawValue);
+        } catch (err) {
+          // Cuadro sin QR legible: se sigue buscando.
+        }
+      };
+    }
+    scanCanvas = scanCanvas || document.createElement('canvas');
+    return () => {
+      if (!video.videoWidth || scanBusy || typeof jsQR !== 'function') return;
+      const w = Math.min(640, video.videoWidth);
+      const h = Math.round(video.videoHeight * w / video.videoWidth);
+      scanCanvas.width = w;
+      scanCanvas.height = h;
+      const ctx = scanCanvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(video, 0, 0, w, h);
+      const frame = ctx.getImageData(0, 0, w, h);
+      const code = jsQR(frame.data, w, h, { inversionAttempts: 'dontInvert' });
+      if (code && code.data) handleScanCode(code.data);
+    };
+  }
   function startCamera() {
     if (!$('scanVideo') || scanStream || scanTimer) return;
-    if (!('BarcodeDetector' in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      $('scanHint').textContent = 'Este navegador no puede leer QR con la cámara. Escribe el código de la tarjeta.';
+    if (!canUseCamera()) {
+      $('scanHint').textContent = 'Este navegador no permite abrir la cámara. Escribe el código de la tarjeta.';
       $('scanVideo').style.display = 'none';
       return;
     }
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
       .then((stream) => {
-        if (!$('scanVideo')) { stream.getTracks().forEach((t) => t.stop()); return; }
+        const video = $('scanVideo');
+        if (!video) { stream.getTracks().forEach((t) => t.stop()); return; }
         scanStream = stream;
-        $('scanVideo').srcObject = stream;
-        $('scanVideo').play().catch(() => {});
-        const detector = new BarcodeDetector({ formats: ['qr_code'] });
-        scanTimer = setInterval(async () => {
-          const video = $('scanVideo');
-          if (!video || !video.videoWidth || scanBusy) return;
-          try {
-            const found = await detector.detect(video);
-            if (found.length && !scanBusy) handleScanCode(found[0].rawValue);
-          } catch (err) {
-            // Cuadro sin QR legible: se sigue buscando.
-          }
-        }, 350);
+        video.setAttribute('playsinline', '');
+        video.setAttribute('muted', '');
+        video.muted = true;
+        video.srcObject = stream;
+        video.play().catch(() => {});
+        const readFrame = makeReader(video);
+        scanTimer = setInterval(readFrame, 300);
+        $('scanHint').textContent = 'Apunta la cámara al QR de la tarjeta del cliente.';
       })
       .catch(() => {
-        if ($('scanHint')) $('scanHint').textContent = 'No se pudo abrir la cámara. Escribe el código de la tarjeta.';
+        if ($('scanHint')) $('scanHint').textContent = 'No se pudo abrir la cámara. Revisa el permiso de cámara del navegador o escribe el código.';
       });
   }
   let scanBusy = false;
@@ -1125,8 +1152,7 @@
     } catch (err) {
       scanBusy = false;
       toast(err.message, false);
-      const canScan = 'BarcodeDetector' in window && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
-      if ($('scanVideo') && canScan) startCamera();
+      if ($('scanVideo') && canUseCamera()) startCamera();
       if ($('scanHint')) $('scanHint').textContent = `${err.message}. Intenta de nuevo con otra tarjeta o escribe el código.`;
     }
   }
