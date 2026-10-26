@@ -5,7 +5,8 @@
   const TOKEN_KEY = 'mf_token';
   const RANK = { user: 1, admin: 2, creator: 3 };
   const ROLE_LABEL = { creator: '👑 Creador', admin: '📊 Administrador', user: '👤 Recepción' };
-  const METHOD_LABEL = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', yapi: 'Yapi', cuenta: 'Cuenta' };
+  const METHOD_LABEL = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', yapi: 'Yappy', cuenta: 'Cuenta' };
+  const YAPPY_LOGO = '<img class="yappy-logo" src="/img/yappy.png" alt="" aria-hidden="true">';
   const STATUS = {
     activa: ['Activa', 'badge-success'],
     por_vencer: ['Por vencer', 'badge-warning'],
@@ -575,6 +576,11 @@
          </div>`
       : '<p class="muted" style="margin-top:6px;">Sin cliente: venta de mostrador.</p>';
 
+    // Muestra el logo de Yappy cuando ese es el método elegido.
+    $('posMethodHint').innerHTML = $('posMethod').value === 'yapi'
+      ? `<span class="method-hint">${YAPPY_LOGO} Cobro por Yappy</span>`
+      : '';
+
     // "Cargar a cuenta" solo está disponible cuando hay un cliente seleccionado.
     $('posCuentaOpt').disabled = !posClient;
     if (!posClient && $('posMethod').value === 'cuenta') $('posMethod').value = 'efectivo';
@@ -921,6 +927,7 @@
     $('posClientInfo').addEventListener('click', (e) => {
       if (e.target.dataset.clearClient !== undefined) { posClient = null; renderCart(); }
     });
+    $('posMethod').addEventListener('change', renderCart);
     $('posCharge').addEventListener('click', (e) => chargeSale(e.currentTarget));
     $('posClear').addEventListener('click', () => {
       cart = [];
