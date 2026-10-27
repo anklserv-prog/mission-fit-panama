@@ -1,0 +1,17 @@
+{
+  "name": "Mission Fit Panamá · Socio",
+  "short_name": "Mission Fit",
+  "description": "Tu tarjeta de acceso, horario y avisos del gimnasio",
+  "start_url": "/socio/",
+  "scope": "/socio/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F8FAFC",
+  "theme_color": "#2563EB",
+  "lang": "es-PA",
+  "icons": [
+    { "src": "/img/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/img/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/img/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

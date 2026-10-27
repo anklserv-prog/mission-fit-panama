@@ -179,6 +179,16 @@
   $('noticeOk').addEventListener('click', closeNotice);
   $('noticeBox').addEventListener('click', (e) => { if (e.target.id === 'noticeBox') closeNotice(); });
 
+  // Los avisos se refrescan al volver a la app y cada 5 minutos, para que un aviso nuevo llegue sin reabrir el portal.
+  const onHome = () => !document.querySelector('[data-view="home"]').hidden;
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && getToken() && onHome()) loadNotices(); });
+  setInterval(() => { if (getToken() && onHome()) loadNotices(); }, 5 * 60 * 1000);
+
+  // App instalable (PWA): el portal funciona sin internet con su última versión.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/socio/sw.js', { scope: '/socio/' }).catch(() => {}));
+  }
+
   function showLogin(message) {
     stopCardTimers();
     const el = $('loginError');
