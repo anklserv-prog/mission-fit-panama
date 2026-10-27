@@ -1307,8 +1307,10 @@ route('GET', /^notices$/, 'admin', async ({ db }) => {
 route('POST', /^notices$/, 'admin', async ({ db, user, body }) => {
   const title = requireString(body.title, 'Título').slice(0, 120);
   const text = requireString(body.body, 'Mensaje').slice(0, 1000);
-  const starts = String(body.starts_on || todayPanama());
-  const ends = String(body.ends_on || starts);
+  // Las fechas son opcionales. Sin fecha, el aviso queda vigente hasta que el administrador lo quite
+  // (se guarda con fechas extremas: 0000-01-01 desde y 9999-12-31 hasta).
+  const starts = body.starts_on ? String(body.starts_on) : '0000-01-01';
+  const ends = body.ends_on ? String(body.ends_on) : '9999-12-31';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(starts) || !/^\d{4}-\d{2}-\d{2}$/.test(ends)) throw new HttpError(400, 'Fechas no válidas');
   if (ends < starts) throw new HttpError(400, 'La fecha final no puede ser anterior a la inicial');
   const id = newId();

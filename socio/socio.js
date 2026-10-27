@@ -168,7 +168,7 @@
     if (!n) { $('noticeBox').hidden = true; return; }
     $('noticeTitle').textContent = n.title;
     $('noticeBody').textContent = n.body;
-    $('noticeDate').textContent = `Vigente hasta el ${fmtDate(n.ends_on)}`;
+    $('noticeDate').textContent = n.ends_on >= '9999-12-31' ? '' : `Vigente hasta el ${fmtDate(n.ends_on)}`;
     $('noticeBox').hidden = false;
   }
   function closeNotice() {

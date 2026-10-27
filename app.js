@@ -1580,8 +1580,8 @@
           <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Título:</label><input name="title" maxlength="120" required placeholder="Ej. Cerrado por feriado"></div></div>
           <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Mensaje:</label><input name="body" maxlength="1000" required placeholder="Ej. El gimnasio estará cerrado el lunes 3 de noviembre."></div></div>
           <div class="form-row">
-            <div class="form-group"><label>Desde:</label><input name="starts_on" type="date" required></div>
-            <div class="form-group"><label>Hasta:</label><input name="ends_on" type="date" required></div>
+            <div class="form-group"><label>Desde (opcional):</label><input name="starts_on" type="date"></div>
+            <div class="form-group"><label>Hasta (opcional):</label><input name="ends_on" type="date"></div>
           </div>
           <div class="error" id="noticeError"></div>
           <div class="btn-group"><button class="btn btn-primary" type="submit">📢 Publicar aviso</button></div>
@@ -1623,7 +1623,7 @@
   async function loadNoticesList() {
     const { notices } = await api('GET', 'notices');
     $('noticesList').innerHTML = notices.length
-      ? notices.map((n) => `<div class="result-row"><div><strong>${esc(n.title)}</strong><div class="muted">${fmtDate(n.starts_on)} al ${fmtDate(n.ends_on)} · ${esc(n.body)}</div></div><button class="btn btn-secondary btn-small" data-del-notice="${esc(n.id)}">Quitar</button></div>`).join('')
+      ? notices.map((n) => `<div class="result-row"><div><strong>${esc(n.title)}</strong><div class="muted">${n.ends_on >= '9999-12-31' ? 'Sin fecha límite' : `Hasta ${fmtDate(n.ends_on)}`} · ${esc(n.body)}</div></div><button class="btn btn-secondary btn-small" data-del-notice="${esc(n.id)}">Quitar</button></div>`).join('')
       : '<p class="muted">No hay avisos vigentes.</p>';
   }
 
