@@ -144,12 +144,15 @@
     });
   }
 
+  // Tarjeta de confirmación del escaneo: no se cierra tocando fuera; solo con su botón o la ✕.
+  let scanCardOpen = false;
   function openModal(html) {
     $('modalBox').innerHTML = html;
     $('modal').classList.add('active');
   }
   function closeModal() {
     stopScanner();
+    scanCardOpen = false;
     $('modal').classList.remove('active');
     $('modalBox').innerHTML = '';
     $('modalBox').style.maxWidth = '';
@@ -1357,6 +1360,72 @@
         if ($('scanHint')) $('scanHint').textContent = 'No se pudo abrir la cámara. Revisa el permiso de cámara del navegador o escribe el código.';
       });
   }
+  // Tarjeta de confirmación: el ingreso (o la salida) se registra solo con su botón.
+  // La ✕ cierra sin registrar y queda en la bitácora. Si la bitácora no se puede guardar, la tarjeta sigue abierta.
+  function openScanCard(client, openEntry) {
+    const st = client.membership_status;
+    const active = st === 'activa' || st === 'por_vencer';
+    const endTxt = fmtDate(client.membership_end);
+    const statusLine = openEntry
+      ? `<div class="status-box ok">🏋️ <strong>Ya está dentro</strong> desde ${timeOf(openEntry.check_in_at)}.</div>`
+      : active
+        ? `<div class="status-box ok">✅ <strong>${st === 'por_vencer' ? 'Membresía por vencer' : 'Membresía activa'}</strong> hasta el ${endTxt}${client.membership_plan ? ` · ${esc(client.membership_plan)}` : ''}</div>`
+        : `<div class="status-box off">⛔ ${st === 'vencida'
+          ? `<strong>Membresía vencida</strong> desde el ${endTxt}. No puede entrar hasta renovar.`
+          : '<strong>Sin membresía.</strong> Debe cobrar una membresía para entrar.'}</div>`;
+    const action = openEntry
+      ? '<button class="btn btn-danger scan-action" id="scanAction" type="button">🚪 Registrar salida</button>'
+      : `<button class="btn btn-success scan-action" id="scanAction" type="button" ${active ? '' : 'disabled'}>✓ Registrar ingreso</button>`;
+
+    openModal(`
+      <div class="scan-card">
+        <div class="scan-top">
+          <div>
+            <div class="scan-label">Cliente escaneado</div>
+            <div class="scan-name">${esc(client.full_name)}</div>
+            <div class="muted">${esc(client.membership_plan || 'Sin plan')}</div>
+          </div>
+          <button class="scan-x" type="button" id="scanClose" aria-label="Cerrar sin registrar">✕</button>
+        </div>
+        ${statusLine}
+        <p class="scan-err" id="scanErr" hidden></p>
+        <div class="scan-actions">${action}</div>
+      </div>`);
+    scanCardOpen = true;
+
+    $('scanClose').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        await api('POST', 'scan-log', { client_id: client.id, action: 'cerrado' });
+        closeModal();
+        toast('Cerrado sin registrar');
+      } catch (err) {
+        btn.disabled = false;
+        $('scanErr').textContent = `No se pudo guardar en la bitácora: ${err.message}. Intenta de nuevo.`;
+        $('scanErr').hidden = false;
+      }
+    });
+
+    $('scanAction')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      setBusy(btn, true);
+      $('scanErr').hidden = true;
+      try {
+        if (openEntry) await api('POST', `entries/${encodeURIComponent(openEntry.id)}/check-out`);
+        else await api('POST', 'entries/check-in', { client_id: client.id });
+        closeModal();
+        toast(openEntry ? `Salida registrada: ${client.full_name}` : `Ingreso registrado: ${client.full_name}`);
+        go('checkin');
+        await showClientCheckin(client.id);
+      } catch (err) {
+        setBusy(btn, false);
+        $('scanErr').textContent = err.message;
+        $('scanErr').hidden = false;
+      }
+    });
+  }
+
   let scanBusy = false;
   async function handleScanCode(raw) {
     if (scanBusy) return;
@@ -1367,10 +1436,8 @@
     try {
       const { client } = await api('GET', 'scan/' + encodeURIComponent(code));
       scanBusy = false;
-      closeModal();
-      go('checkin');
-      await showClientCheckin(client.id);
-      toast(`Cliente encontrado: ${client.full_name}`);
+      const { entries } = await api('GET', 'entries/open');
+      openScanCard(client, entries.find((en) => en.client_id === client.id) || null);
     } catch (err) {
       scanBusy = false;
       toast(err.message, false);
@@ -1911,6 +1978,7 @@
 
     // Modales: delegación para formularios, selector de iconos y cierre
     $('modal').addEventListener('click', (e) => {
+      if (scanCardOpen) return;
       if (e.target.id === 'modal' || e.target.dataset.close !== undefined) closeModal();
     });
     $('modalBox').addEventListener('click', (e) => {

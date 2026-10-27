@@ -316,12 +316,18 @@ route('GET', /^clients\/code\/([^/]+)$/, 'user', async ({ db, user, args }) => {
 });
 
 // Escáner de entrada: acepta el QR rotativo del portal (y la tarjeta fija, según la configuración).
+// Un escaneo rechazado (QR caducado, firma falsa, código inexistente) queda en la bitácora.
 route('GET', /^scan\/([^/]+)$/, 'user', async ({ db, user, args }) => {
-  const code = await resolveScan(db, decodeURIComponent(args[0]));
-  const row = await db.prepare('SELECT id FROM clients WHERE code = ? AND active = 1').bind(code).first();
-  if (!row) throw new HttpError(404, 'Código de cliente no encontrado');
-  const p = await clientPayload(db, row.id);
-  return json({ ...p, client: maskCard(user, p.client) });
+  try {
+    const code = await resolveScan(db, decodeURIComponent(args[0]));
+    const row = await db.prepare('SELECT id FROM clients WHERE code = ? AND active = 1').bind(code).first();
+    if (!row) throw new HttpError(404, 'Código de cliente no encontrado');
+    const p = await clientPayload(db, row.id);
+    return json({ ...p, client: maskCard(user, p.client) });
+  } catch (err) {
+    if (err instanceof HttpError) await logScan(db, user, null, 'rechazado', err.message, null).catch(() => {});
+    throw err;
+  }
 });
 
 route('GET', /^clients\/([^/]+)$/, 'user', async ({ db, user, args }) => {
@@ -419,7 +425,22 @@ route('POST', /^memberships$/, 'user', async ({ db, user, body }) => {
 // Entradas (check-in / check-out)
 // ---------------------------------------------------------------------------
 
-route('POST', /^entries\/check-in$/, 'user', async ({ db, body }) => {
+// Bitácora: quién hizo qué con cada escaneo y cuándo.
+async function logScan(db, user, clientId, action, reason, entryId) {
+  await db.prepare(
+    'INSERT INTO scan_log (id, day, at, user_id, client_id, action, reason, entry_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+  ).bind(newId(), todayPanama(), Date.now(), user?.id ?? null, clientId, action, reason, entryId).run();
+}
+
+// La tarjeta de confirmación avisa al cerrar con la ✕ (sin registrar nada).
+route('POST', /^scan-log$/, 'user', async ({ db, user, body }) => {
+  if (body.action !== 'cerrado') throw new HttpError(400, 'Acción no válida');
+  const clientId = requireString(body.client_id, 'Cliente');
+  await logScan(db, user, clientId, 'cerrado', null, null);
+  return json({ ok: true });
+});
+
+route('POST', /^entries\/check-in$/, 'user', async ({ db, body, user }) => {
   const clientId = requireString(body.client_id, 'Cliente');
   const client = await db.prepare('SELECT * FROM clients WHERE id = ? AND active = 1').bind(clientId).first();
   if (!client) throw new HttpError(404, 'Cliente no encontrado');
@@ -438,18 +459,20 @@ route('POST', /^entries\/check-in$/, 'user', async ({ db, body }) => {
   const now = Date.now();
   await db.prepare('INSERT INTO entries (id, client_id, day, check_in_at) VALUES (?, ?, ?, ?)')
     .bind(id, clientId, today, now).run();
+  await logScan(db, user, clientId, 'ingreso', null, id);
   return json({
     entry: { id, client_id: clientId, client_name: client.full_name, check_in_at: now },
     status,
   }, 201);
 });
 
-route('POST', /^entries\/([^/]+)\/check-out$/, 'user', async ({ db, args }) => {
+route('POST', /^entries\/([^/]+)\/check-out$/, 'user', async ({ db, args, user }) => {
   const entry = await db.prepare('SELECT * FROM entries WHERE id = ?').bind(args[0]).first();
   if (!entry) throw new HttpError(404, 'Entrada no encontrada');
   if (entry.check_out_at) throw new HttpError(409, 'Esta entrada ya tiene salida registrada');
   const out = Date.now();
   await db.prepare('UPDATE entries SET check_out_at = ? WHERE id = ?').bind(out, entry.id).run();
+  await logScan(db, user, entry.client_id, 'salida', null, entry.id);
   return json({ entry: { ...entry, check_out_at: out, minutes: Math.round((out - entry.check_in_at) / 60000) } });
 });
 
