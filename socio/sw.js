@@ -1,6 +1,6 @@
 // Service worker del portal del socio (solo /socio/): deja abrir el portal sin internet con su última versión.
 // Los datos (/api/) siempre van a la red: la tarjeta y el horario nunca se muestran desactualizados.
-const CACHE = 'mf-socio-v1';
+const CACHE = 'mf-socio-v2';
 const SHELL = [
   '/socio/',
   '/socio/index.html',

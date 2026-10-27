@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#2563EB">
   <title>Portal del socio · Mission Fit</title>
   <link rel="icon" href="/img/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/img/icon-192.png">
@@ -57,41 +57,54 @@
       </form>
     </section>
 
-    <!-- Inicio: tarjeta de acceso -->
+    <!-- Inicio: membresía, acceso y contacto -->
     <section data-view="home" hidden>
-      <h1 id="greet">Hola</h1>
+      <div class="greet-row">
+        <h1 id="greet">Hola</h1>
+        <button class="info-btn" type="button" data-info-title="Tu membresía" data-info="Activa: puedes entrar. Por vencer: quedan 7 días o menos, renueva en recepción. Vencida o sin membresía: no puedes entrar hasta renovar." aria-label="Ayuda">i</button>
+      </div>
 
-      <div class="panel membership">
-        <div class="row">
+      <div class="hero">
+        <div class="hero-top">
+          <span class="hero-label">Membresía</span>
           <span id="status" class="pill">—</span>
         </div>
-        <p id="plan" class="muted"></p>
+        <p id="plan" class="hero-plan">—</p>
+        <p id="expires" class="hero-sub"></p>
       </div>
 
-      <div class="panel card-access" id="cardPanel">
-        <h2>Tu tarjeta de acceso</h2>
+      <section class="access" id="cardPanel">
+        <div class="sec-head">
+          <h2>Tu acceso</h2>
+          <button class="info-btn" type="button" data-info-title="Tu acceso" data-info="Muestra este código en recepción para entrar. Cambia cada minuto, por eso una captura de pantalla no sirve." aria-label="Ayuda">i</button>
+        </div>
         <div id="qrWrap">
-          <img id="qrImg" alt="Código QR de tu tarjeta de acceso">
+          <img id="qrImg" alt="Código QR de tu acceso">
           <p class="code" id="qrCode"></p>
-          <p class="muted small">Muestra esta pantalla en recepción. El código cambia cada minuto, así que una captura no sirve.</p>
         </div>
-        <p id="noCard" class="notice" hidden>
-          Tu membresía no está activa. Renuévala en recepción para volver a ver tu tarjeta de acceso.
-        </p>
-      </div>
+        <p id="noCard" class="notice" hidden>Tu membresía no está activa. Renuévala en recepción para ver tu código de acceso.</p>
+      </section>
 
-      <div class="panel">
-        <h2>Horario</h2>
-        <p id="schedule" class="muted">Consulta el horario en recepción.</p>
-      </div>
+      <details class="sec">
+        <summary>
+          <span class="sec-title">Horario</span>
+          <span class="chev" aria-hidden="true"></span>
+        </summary>
+        <p id="schedule" class="sec-body muted">Consulta el horario en recepción.</p>
+      </details>
 
-      <div class="panel">
-        <h2>Contacto</h2>
-        <div class="actions">
-          <a id="callBtn" class="btn ghost" href="#" hidden>📞 Llamar</a>
-          <a id="waBtn" class="btn ghost" href="#" target="_blank" rel="noopener" hidden>💬 WhatsApp</a>
+      <details class="sec" open>
+        <summary>
+          <span class="sec-title">Contacto</span>
+          <span class="chev" aria-hidden="true"></span>
+        </summary>
+        <div class="contact">
+          <a id="waBtn" class="wa-btn" href="#" target="_blank" rel="noopener" hidden>
+            <img src="/img/whatsapp-logo.png" alt="Escribir por WhatsApp">
+          </a>
+          <a id="callBtn" class="call-btn" href="#" hidden>Llamar al gimnasio</a>
         </div>
-      </div>
+      </details>
 
       <button id="logoutBtn" class="btn link" type="button">Cerrar sesión</button>
     </section>
@@ -101,9 +114,19 @@
     </section>
   </main>
 
-  <div id="noticeBox" class="notice-overlay" hidden>
-    <div class="notice-card" role="dialog" aria-modal="true" aria-labelledby="noticeTitle">
-      <div class="notice-icon">📢</div>
+  <!-- Explicación de un punto de la pantalla (botón i) -->
+  <div id="infoBox" class="sheet-overlay" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="infoTitle">
+      <h2 id="infoTitle"></h2>
+      <p id="infoText"></p>
+      <button class="btn primary" id="infoOk" type="button">Entendido</button>
+    </div>
+  </div>
+
+  <!-- Avisos del gimnasio -->
+  <div id="noticeBox" class="sheet-overlay" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="noticeTitle">
+      <div class="notice-tag">Aviso del gimnasio</div>
       <h2 id="noticeTitle"></h2>
       <p id="noticeBody"></p>
       <p class="muted small" id="noticeDate"></p>

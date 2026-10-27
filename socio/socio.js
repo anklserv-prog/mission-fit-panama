@@ -109,9 +109,10 @@
     const m = d.membership || {};
     $('status').className = 'pill ' + (tone[m.status] || '');
     $('status').textContent = labels[m.status] || '—';
-    let planText = m.plan ? `${m.plan} · vence ${fmtDate(m.end_date)}` : 'Sin membresía registrada';
-    if (m.status === 'por_vencer' && m.days_left != null) planText += ` · faltan ${m.days_left} día(s)`;
-    $('plan').textContent = planText;
+    $('plan').textContent = m.plan || 'Sin membresía registrada';
+    let expiresText = m.end_date ? `Vence el ${fmtDate(m.end_date)}` : '';
+    if (m.status === 'por_vencer' && m.days_left != null) expiresText += ` · faltan ${m.days_left} día(s)`;
+    $('expires').textContent = expiresText;
 
     if (d.card?.token) {
       paintCard(d.card);
@@ -178,6 +179,20 @@
   }
   $('noticeOk').addEventListener('click', closeNotice);
   $('noticeBox').addEventListener('click', (e) => { if (e.target.id === 'noticeBox') closeNotice(); });
+
+  // Botones ⓘ: explican un punto de la pantalla en una hoja. No abren ni cierran las secciones desplegables.
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-info]');
+    if (btn) {
+      e.preventDefault();
+      e.stopPropagation();
+      $('infoTitle').textContent = btn.dataset.infoTitle || '';
+      $('infoText').textContent = btn.dataset.info || '';
+      $('infoBox').hidden = false;
+      return;
+    }
+    if (e.target.id === 'infoBox' || e.target.id === 'infoOk') $('infoBox').hidden = true;
+  });
 
   // Los avisos se refrescan al volver a la app y cada 5 minutos, para que un aviso nuevo llegue sin reabrir el portal.
   const onHome = () => !document.querySelector('[data-view="home"]').hidden;
