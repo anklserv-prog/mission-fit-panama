@@ -1296,6 +1296,53 @@ route('POST', /^portal\/password$/, 'public', async ({ db, request, body }) => {
   return json(await portalPayload(db, s.clientId, false));
 });
 
+// Avisos del gimnasio (administrador): publicar, listar y quitar. Quitar no borra, solo oculta el aviso.
+route('GET', /^notices$/, 'admin', async ({ db }) => {
+  const { results } = await db.prepare(
+    'SELECT id, title, body, starts_on, ends_on FROM notices WHERE active = 1 AND ends_on >= ? ORDER BY starts_on DESC',
+  ).bind(todayPanama()).all();
+  return json({ notices: results });
+});
+
+route('POST', /^notices$/, 'admin', async ({ db, user, body }) => {
+  const title = requireString(body.title, 'Título').slice(0, 120);
+  const text = requireString(body.body, 'Mensaje').slice(0, 1000);
+  const starts = String(body.starts_on || todayPanama());
+  const ends = String(body.ends_on || starts);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(starts) || !/^\d{4}-\d{2}-\d{2}$/.test(ends)) throw new HttpError(400, 'Fechas no válidas');
+  if (ends < starts) throw new HttpError(400, 'La fecha final no puede ser anterior a la inicial');
+  const id = newId();
+  await db.prepare(
+    'INSERT INTO notices (id, title, body, starts_on, ends_on, active, created_by) VALUES (?, ?, ?, ?, ?, 1, ?)',
+  ).bind(id, title, text, starts, ends, user?.id ?? null).run();
+  return json({ notice: { id, title, body: text, starts_on: starts, ends_on: ends } }, 201);
+});
+
+route('DELETE', /^notices\/([^/]+)$/, 'admin', async ({ db, args }) => {
+  await db.prepare('UPDATE notices SET active = 0 WHERE id = ?').bind(args[0]).run();
+  return json({ ok: true });
+});
+
+// Socio: avisos vigentes que todavía no ha cerrado.
+route('GET', /^portal\/notices$/, 'public', async ({ db, request }) => {
+  const s = await authenticateClient(db, request);
+  const today = todayPanama();
+  const { results } = await db.prepare(
+    `SELECT n.id, n.title, n.body, n.ends_on FROM notices n
+      WHERE n.active = 1 AND n.starts_on <= ? AND n.ends_on >= ?
+        AND NOT EXISTS (SELECT 1 FROM notice_reads r WHERE r.notice_id = n.id AND r.client_id = ?)
+      ORDER BY n.starts_on DESC`,
+  ).bind(today, today, s.clientId).all();
+  return json({ notices: results });
+});
+
+route('POST', /^portal\/notices\/([^/]+)\/read$/, 'public', async ({ db, request, args }) => {
+  const s = await authenticateClient(db, request);
+  await db.prepare('INSERT OR IGNORE INTO notice_reads (notice_id, client_id, read_at) VALUES (?, ?, ?)')
+    .bind(args[0], s.clientId, Date.now()).run();
+  return json({ ok: true });
+});
+
 // Administrador: crea o restablece el acceso del socio con una contraseña temporal (se muestra una sola vez).
 route('POST', /^clients\/([^/]+)\/portal-access$/, 'admin', async ({ db, args }) => {
   const client = await db.prepare('SELECT id, cedula FROM clients WHERE id = ? AND active = 1').bind(args[0]).first();
@@ -1318,7 +1365,7 @@ route('POST', /^clients\/([^/]+)\/portal-access$/, 'admin', async ({ db, args })
 route('POST', /^admin\/reset$/, 'creator', async ({ db, body }) => {
   if (body.confirm !== 'REINICIAR') throw new HttpError(400, 'Escribe REINICIAR para confirmar el reinicio');
   // Orden pensado para las llaves foráneas: primero lo que depende de otras tablas.
-  const tables = ['client_sessions', 'client_accounts', 'client_ledger', 'sale_items', 'stock_movements', 'payments', 'sales', 'memberships', 'entries', 'clients', 'products'];
+  const tables = ['client_sessions', 'client_accounts', 'notice_reads', 'client_ledger', 'sale_items', 'stock_movements', 'payments', 'sales', 'memberships', 'entries', 'clients', 'products'];
   const deleted = {};
   for (const t of tables) {
     deleted[t] = (await db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).first()).n;

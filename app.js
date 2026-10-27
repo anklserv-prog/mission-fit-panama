@@ -1557,6 +1557,67 @@
   // Configuración
   // -------------------------------------------------------------------------
 
+  // Avisos para socios: publica el administrador. El socio los ve al abrir su portal y los cierra con "Entendido".
+  function ensureNoticesCard() {
+    if (!can('admin')) return;
+    if (!$('noticesCard')) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.id = 'noticesCard';
+      card.innerHTML = `
+        <div class="card-title"><span class="card-title-icon">📢</span> Avisos para socios</div>
+        <p class="muted">Aparecen cuando el socio abre su portal. Por ejemplo: día cerrado, feriado o cambio de horario.</p>
+        <form id="noticeForm">
+          <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Título:</label><input name="title" maxlength="120" required placeholder="Ej. Cerrado por feriado"></div></div>
+          <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Mensaje:</label><input name="body" maxlength="1000" required placeholder="Ej. El gimnasio estará cerrado el lunes 3 de noviembre."></div></div>
+          <div class="form-row">
+            <div class="form-group"><label>Desde:</label><input name="starts_on" type="date" required></div>
+            <div class="form-group"><label>Hasta:</label><input name="ends_on" type="date" required></div>
+          </div>
+          <div class="error" id="noticeError"></div>
+          <div class="btn-group"><button class="btn btn-primary" type="submit">📢 Publicar aviso</button></div>
+        </form>
+        <div id="noticesList" style="margin-top:12px;"></div>`;
+      $('configView').appendChild(card);
+      $('noticeForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const f = e.target;
+        const btn = f.querySelector('button');
+        $('noticeError').textContent = '';
+        setBusy(btn, true);
+        try {
+          await api('POST', 'notices', formData(f));
+          f.reset();
+          toast('Aviso publicado');
+          loadNoticesList();
+        } catch (err) {
+          $('noticeError').textContent = err.message;
+        } finally {
+          setBusy(btn, false);
+        }
+      });
+      $('noticesList').addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-del-notice]');
+        if (!b) return;
+        try {
+          await api('DELETE', 'notices/' + encodeURIComponent(b.dataset.delNotice));
+          toast('Aviso quitado');
+          loadNoticesList();
+        } catch (err) {
+          toast(err.message, false);
+        }
+      });
+    }
+    loadNoticesList().catch(() => {});
+  }
+
+  async function loadNoticesList() {
+    const { notices } = await api('GET', 'notices');
+    $('noticesList').innerHTML = notices.length
+      ? notices.map((n) => `<div class="result-row"><div><strong>${esc(n.title)}</strong><div class="muted">${fmtDate(n.starts_on)} al ${fmtDate(n.ends_on)} · ${esc(n.body)}</div></div><button class="btn btn-secondary btn-small" data-del-notice="${esc(n.id)}">Quitar</button></div>`).join('')
+      : '<p class="muted">No hay avisos vigentes.</p>';
+  }
+
   // Tarjeta de reinicio de datos: solo la ve el creador. Pide escribir REINICIAR para habilitar el botón.
   function ensureResetCard() {
     if (me.role !== 'creator' || $('resetCard')) return;
@@ -1593,6 +1654,7 @@
     const [{ settings }, usersRes] = await Promise.all([api('GET', 'settings'), api('GET', 'users')]);
     users = usersRes.users;
     ensureResetCard();
+    ensureNoticesCard();
     const form = $('settingsForm');
     Object.entries(settings).forEach(([k, v]) => {
       const el = form.elements[k];
@@ -1806,7 +1868,20 @@
         setBusy(btn, true);
         try {
           const r = await api('POST', 'clients/' + encodeURIComponent(cardClient.id) + '/portal-access');
-          $('portalResult').innerHTML = `<div class="status-box ok">Cédula: <strong>${esc(r.login)}</strong><br>Contraseña temporal: <strong class="client-code">${esc(r.password)}</strong><br><span class="muted">Entrégasela al socio. La cambiará en su primer ingreso. No se volverá a mostrar.</span></div>`;
+          // Tarjeta con el acceso: se envía por WhatsApp o se cierra con la ✕. La contraseña no se vuelve a mostrar.
+          const first = String(cardClient.full_name || '').split(' ')[0];
+          const msg = `Hola ${first}, ya tienes acceso al portal del socio de Mission Fit Panamá.\n\nIngresa aquí: ${location.origin}/socio/\nUsuario (cédula): ${r.login}\nContraseña temporal: ${r.password}\n\nAl entrar te pedirá crear tu propia contraseña.`;
+          $('portalResult').innerHTML = `
+            <div class="status-box ok">
+              <div class="flex-between">
+                <strong>Acceso creado</strong>
+                <button class="scan-x" type="button" id="portalClose" aria-label="Cerrar sin enviar">✕</button>
+              </div>
+              <p style="margin:8px 0;">Cédula: <strong>${esc(r.login)}</strong><br>Contraseña temporal: <strong class="client-code">${esc(r.password)}</strong></p>
+              <p class="muted small" style="margin:0;">Esta contraseña no se volverá a mostrar. Si cierras sin enviarla, habrá que restablecer el acceso.</p>
+              <div class="btn-group"><a class="btn btn-success" target="_blank" rel="noopener" href="https://wa.me/${esc(waNumber(cardClient.phone))}?text=${encodeURIComponent(msg)}">📲 Enviar por WhatsApp</a></div>
+            </div>`;
+          $('portalClose').addEventListener('click', () => { $('portalResult').innerHTML = ''; });
         } catch (err) {
           toast(err.message, false);
         } finally {

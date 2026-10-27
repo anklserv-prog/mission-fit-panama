@@ -142,6 +142,7 @@
       const d = await call('GET', 'portal/me');
       if (d.must_change) { showView('password'); return; }
       renderHome(d);
+      loadNotices();
     } catch (err) {
       if (err.status === 401) {
         setToken('');
@@ -152,6 +153,31 @@
       showLogin();
     }
   }
+
+  // Avisos del gimnasio: se muestran al abrir el portal, uno por uno. Cerrar (Entendido, ✕ o tocar fuera) queda como visto.
+  let pendingNotices = [];
+  async function loadNotices() {
+    try {
+      const { notices } = await call('GET', 'portal/notices');
+      pendingNotices = notices;
+      showNextNotice();
+    } catch { /* sin avisos si no hay conexión */ }
+  }
+  function showNextNotice() {
+    const n = pendingNotices[0];
+    if (!n) { $('noticeBox').hidden = true; return; }
+    $('noticeTitle').textContent = n.title;
+    $('noticeBody').textContent = n.body;
+    $('noticeDate').textContent = `Vigente hasta el ${fmtDate(n.ends_on)}`;
+    $('noticeBox').hidden = false;
+  }
+  function closeNotice() {
+    const n = pendingNotices.shift();
+    if (n) call('POST', `portal/notices/${encodeURIComponent(n.id)}/read`).catch(() => {});
+    showNextNotice();
+  }
+  $('noticeOk').addEventListener('click', closeNotice);
+  $('noticeBox').addEventListener('click', (e) => { if (e.target.id === 'noticeBox') closeNotice(); });
 
   function showLogin(message) {
     stopCardTimers();

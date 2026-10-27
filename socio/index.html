@@ -98,6 +98,16 @@
     </section>
   </main>
 
+  <div id="noticeBox" class="notice-overlay" hidden>
+    <div class="notice-card" role="dialog" aria-modal="true" aria-labelledby="noticeTitle">
+      <div class="notice-icon">📢</div>
+      <h2 id="noticeTitle"></h2>
+      <p id="noticeBody"></p>
+      <p class="muted small" id="noticeDate"></p>
+      <button class="btn primary" id="noticeOk" type="button">Entendido</button>
+    </div>
+  </div>
+
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="/vendor/qrcode.js"></script>

@@ -143,3 +143,12 @@ input:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
   box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
 }
 .toast.bad { background: var(--bad); color: #fff; }
+
+/* Avisos del gimnasio: tarjeta sobre el inicio; se cierra con "Entendido" o tocando fuera. */
+.notice-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, .55); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 50; }
+.notice-overlay[hidden] { display: none; }
+.notice-card { background: #fff; border-radius: 20px; padding: 24px 20px; width: 100%; max-width: 380px; text-align: center; box-shadow: 0 12px 32px rgba(0, 0, 0, .2); }
+.notice-icon { font-size: 36px; }
+.notice-card h2 { margin: 8px 0; font-size: 20px; }
+.notice-card p { margin: 8px 0; white-space: pre-line; }
+.notice-card .btn { width: 100%; margin-top: 12px; }
