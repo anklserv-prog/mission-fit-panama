@@ -1,6 +1,6 @@
 // Service worker de Mission Fit: deja abrir la app sin internet con su última versión.
 // Los datos (/api/) siempre van a la red: nunca se muestran datos viejos de clientes o caja.
-const CACHE = 'mission-fit-v2';
+const CACHE = 'mission-fit-v3';
 const SHELL = [
   '/',
   '/index.html',
@@ -8,6 +8,14 @@ const SHELL = [
   '/app-extra.css',
   '/app.js',
   '/vendor/qrcode.js',
+  '/vendor/jsqr.js',
+  '/vendor/fonts/barlow-latin-400-normal.woff2',
+  '/vendor/fonts/barlow-latin-500-normal.woff2',
+  '/vendor/fonts/barlow-latin-600-normal.woff2',
+  '/vendor/fonts/barlow-latin-700-normal.woff2',
+  '/vendor/fonts/barlow-condensed-latin-600-normal.woff2',
+  '/vendor/fonts/barlow-condensed-latin-700-normal.woff2',
+  '/vendor/fonts/barlow-condensed-latin-800-normal.woff2',
   '/img/icon.svg',
   '/img/icon-192.png',
   '/img/icon-512.png',

@@ -4,7 +4,7 @@
 
   const TOKEN_KEY = 'mf_token';
   const RANK = { user: 1, admin: 2, creator: 3 };
-  const ROLE_LABEL = { creator: '👑 Creador', admin: '📊 Administrador', user: '👤 Recepción' };
+  const ROLE_LABEL = { creator: 'Creador', admin: 'Administrador', user: 'Recepción' };
   const METHOD_LABEL = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', yapi: 'Yappy', cuenta: 'Cuenta' };
   const YAPPY_LOGO = '<img class="yappy-logo" src="/img/yappy.png" alt="" aria-hidden="true">';
   const STATUS = {
@@ -19,13 +19,14 @@
     '🍫', '🍪', '🥜', '🍿', '🍟', '🥪', '🍌', '🍎', '🍊', '🥗',
     '🍗', '🍝', '🥤', '🧊', '🏋️', '🧴', '👕', '🧢', '🎽', '📦',
   ];
+  // icon: id del símbolo SVG en index.html. short: texto de la barra inferior en celular.
   const MENU = [
-    { id: 'dashboard', icon: '📊', label: 'Dashboard', min: 'admin', title: ['📊 Dashboard', 'Resumen general del gimnasio'] },
-    { id: 'checkin', icon: '📱', label: 'Check-in', min: 'user', title: ['📱 Check-in', 'Registra entradas y renovaciones'] },
-    { id: 'clientes', icon: '👥', label: 'Clientes', min: 'user', title: ['👥 Clientes', 'Directorio, estado de membresías y cuenta'] },
-    { id: 'inventario', icon: '🛒', label: 'Market', min: 'user', title: ['🛒 Market', 'Productos, venta rápida e inventario'] },
-    { id: 'reportes', icon: '📈', label: 'Reportes', min: 'admin', title: ['📈 Reportes', 'Ingresos, entradas, ventas y cuentas'] },
-    { id: 'config', icon: '⚙️', label: 'Configuración', min: 'admin', title: ['⚙️ Configuración', 'Datos del gimnasio, planes y usuarios'] },
+    { id: 'dashboard', icon: 'home', label: 'Dashboard', min: 'admin', title: ['Dashboard', 'Resumen general del gimnasio'] },
+    { id: 'checkin', icon: 'scan', label: 'Check-in', min: 'user', title: ['Check-in', 'Registra entradas y renovaciones'] },
+    { id: 'clientes', icon: 'users', label: 'Clientes', min: 'user', title: ['Clientes', 'Directorio, estado de membresías y cuenta'] },
+    { id: 'inventario', icon: 'cart', label: 'Market', min: 'user', title: ['Market', 'Productos, venta rápida e inventario'] },
+    { id: 'reportes', icon: 'chart', label: 'Reportes', min: 'admin', title: ['Reportes', 'Ingresos, entradas, ventas y cuentas'] },
+    { id: 'config', icon: 'sliders', label: 'Configuración', short: 'Ajustes', min: 'admin', title: ['Configuración', 'Datos del gimnasio, planes y usuarios'] },
   ];
 
   const $ = (id) => document.getElementById(id);
@@ -33,6 +34,14 @@
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
   const money = (n) => '$' + Number(n || 0).toFixed(2);
+  // Icono SVG del sprite de index.html.
+  const ico = (name, cls = '') => `<svg class="ico${cls ? ' ' + cls : ''}" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
+  // Cuadro de estado con icono (ok, warn, off, info).
+  const stateBox = (kind, icon, html) => `<div class="status-box has-ico ${kind}">${ico(icon)}<div>${html}</div></div>`;
+  // Dato con icono pequeño (cédula, teléfono, email).
+  const attr = (icon, text) => `<span class="attr">${ico(icon)}<span>${esc(text)}</span></span>`;
+  const initials = (name) => String(name || '').trim().split(/\s+/).slice(0, 2)
+    .map((w) => w.charAt(0)).join('').toUpperCase() || '–';
   const badge = (status) => {
     const [text, cls] = STATUS[status] || [status, 'badge-muted'];
     return `<span class="badge ${cls}">${esc(text)}</span>`;
@@ -163,8 +172,8 @@
   function setBusy(btn, busy, label) {
     if (!btn) return;
     btn.disabled = busy;
-    if (busy) { btn.dataset.label = btn.textContent; btn.textContent = 'Guardando…'; }
-    else if (btn.dataset.label) btn.textContent = label || btn.dataset.label;
+    if (busy) { btn.dataset.label = btn.innerHTML; btn.textContent = 'Guardando…'; }
+    else if (btn.dataset.label) btn.innerHTML = label || btn.dataset.label;
   }
 
   // -------------------------------------------------------------------------
@@ -204,6 +213,8 @@
   function paintUser() {
     $('userName').textContent = me.name;
     $('userRole').textContent = ROLE_LABEL[me.role];
+    $('userAvatar').textContent = initials(me.name);
+    $('headerAvatar').textContent = initials(me.name);
     $('headerUser').textContent = `${me.name} · ${ROLE_LABEL[me.role]}`;
   }
 
@@ -228,7 +239,8 @@
       const li = document.createElement('li');
       li.className = 'nav-item';
       li.id = 'nav-' + m.id;
-      li.innerHTML = `<span class="nav-icon">${m.icon}</span><span>${m.label}</span>`;
+      li.innerHTML = `<span class="nav-icon">${ico(m.icon)}</span><span class="nav-label">${m.label}</span><span class="nav-short">${m.short || m.label}</span>`;
+      li.title = m.label;
       li.addEventListener('click', () => go(m.id));
       nav.appendChild(li);
     });
@@ -338,14 +350,17 @@
     const memberActive = active && !daily;
     const tabs = `
       <div class="mode-tabs">
-        <button class="mode-tab ${checkinMode === 'miembro' ? 'active' : ''}" data-mode="miembro">👤 Membresía</button>
-        <button class="mode-tab ${checkinMode === 'diario' ? 'active' : ''}" data-mode="diario">🎟️ Diario</button>
+        <button class="mode-tab ${checkinMode === 'miembro' ? 'active' : ''}" data-mode="miembro">${ico('card')}Membresía</button>
+        <button class="mode-tab ${checkinMode === 'diario' ? 'active' : ''}" data-mode="diario">${ico('ticket')}Diario</button>
       </div>`;
     const header = `
       <div class="flex-between">
-        <div>
-          <div class="detail-title">${esc(client.full_name)}</div>
-          <div class="muted">Cédula ${esc(client.cedula || '–')} · Tel. ${esc(client.phone || '–')}</div>
+        <div class="detail-head">
+          <span class="avatar avatar-lg">${esc(initials(client.full_name))}</span>
+          <div>
+            <div class="detail-title">${esc(client.full_name)}</div>
+            <div class="attr-list">${attr('idcard', client.cedula || '–')}${attr('phone', client.phone || '–')}</div>
+          </div>
         </div>
         ${badge(st)}
       </div>`;
@@ -353,9 +368,8 @@
     $('ciDetail').style.display = 'block';
     const mins = checkinOpen ? Math.round((Date.now() - checkinOpen.check_in_at) / 60000) : 0;
     const insideBox = `
-      <div class="status-box ok" style="margin-top:12px;">🏋️ <strong>Ya está dentro del gimnasio</strong>
-        desde ${checkinOpen ? timeOf(checkinOpen.check_in_at) : ''} · ${mins} min</div>
-      <div class="btn-group"><button class="btn btn-danger" id="ciExit">🚪 Registrar salida</button></div>`;
+      ${stateBox('ok', 'dumbbell', `<strong>Ya está dentro del gimnasio</strong> desde ${checkinOpen ? timeOf(checkinOpen.check_in_at) : ''} · ${mins} min`)}
+      <div class="btn-group"><button class="btn btn-danger" id="ciExit">${ico('logout')}Registrar salida</button></div>`;
     $('ciDetail').innerHTML = header + tabs + (checkinOpen ? insideBox
       : (checkinMode === 'miembro'
         ? miembroPanel(client, st, active, daily, memberActive)
@@ -367,40 +381,40 @@
     const endTxt = fmtDate(client.membership_end);
     // Estado de la membresía: cada caso se ve distinto para no confundir a recepción.
     const statusBox = daily && active
-      ? '<div class="status-box ok">🎟️ <strong>Uso diario pagado hoy</strong>. Puede entrar.</div>'
+      ? stateBox('ok', 'ticket', '<strong>Uso diario pagado hoy</strong>. Puede entrar.')
       : ({
-        activa: `<div class="status-box ok">✅ <strong>Membresía activa</strong> hasta el ${endTxt}${client.membership_plan ? ` · ${esc(client.membership_plan)}` : ''}</div>`,
-        por_vencer: `<div class="status-box warn">⚠️ <strong>Membresía por vencer</strong>: vence el ${endTxt}. Renueva para seguir entrando.</div>`,
-        vencida: `<div class="status-box off">⛔ <strong>Membresía vencida</strong> desde el ${endTxt}. No puede entrar hasta renovar.</div>`,
-        sin_membresia: '<div class="status-box off">⛔ <strong>Sin membresía</strong>. Debe cobrar una membresía para entrar.</div>',
+        activa: stateBox('ok', 'check-circle', `<strong>Membresía activa</strong> hasta el ${endTxt}${client.membership_plan ? ` · ${esc(client.membership_plan)}` : ''}`),
+        por_vencer: stateBox('warn', 'clock', `<strong>Membresía por vencer</strong>: vence el ${endTxt}. Renueva para seguir entrando.`),
+        vencida: stateBox('off', 'ban', `<strong>Membresía vencida</strong> desde el ${endTxt}. No puede entrar hasta renovar.`),
+        sin_membresia: stateBox('off', 'ban', '<strong>Sin membresía</strong>. Debe cobrar una membresía para entrar.'),
       }[st] || '');
 
     const planOptions = plans.filter((p) => p.duration_days !== 1)
       .map((p) => `<option value="${esc(p.id)}">${esc(p.name)} — ${money(p.price)}</option>`).join('');
-    const renewLabel = active ? '🔁 Renovar' : '💳 Cobrar y activar';
+    const renewLabel = active ? `${ico('refresh')}Renovar` : `${ico('card')}Cobrar y activar`;
     const renewForm = `
       <div class="form-row">
-        <div class="form-group"><label>Plan:</label><select id="renewPlan">${planOptions}</select></div>
-        <div class="form-group"><label>Método:</label><select id="renewMethod">${methodSelectOptions()}</select></div>
+        <div class="form-group"><label>Plan</label><select id="renewPlan">${planOptions}</select></div>
+        <div class="form-group"><label>Método</label><select id="renewMethod">${methodSelectOptions()}</select></div>
       </div>
       <div class="form-row ref-box" id="renewRefBox" style="display:none;">
-        <div class="form-group" style="grid-column:1 / -1;"><label>Código de transacción de Yappy:</label><input id="renewRef" class="wide-input" autocomplete="off" placeholder="Ej: 1A2B3C4D"></div>
+        <div class="form-group" style="grid-column:1 / -1;"><label>Código de transacción de Yappy</label><input id="renewRef" class="wide-input" autocomplete="off" placeholder="Ej: 1A2B3C4D"></div>
       </div>
       <div class="btn-group"><button class="btn btn-primary" id="renewBtn">${renewLabel}</button></div>`;
 
     let renewSection;
     if (memberActive && st === 'activa') {
-      renewSection = `<details class="renew-details"><summary>🔁 Renovar por adelantado</summary>${renewForm}</details>`;
+      renewSection = `<details class="renew-details"><summary>${ico('refresh')} Renovar por adelantado ${ico('chevron-down', 'caret')}</summary>${renewForm}</details>`;
     } else if (memberActive) {
-      renewSection = `<div class="card-title" style="margin-bottom:12px;">🔁 Renovar membresía</div>${renewForm}`;
+      renewSection = `<div class="section-title">${ico('refresh')} Renovar membresía</div>${renewForm}`;
     } else {
-      renewSection = `<div class="card-title" style="margin-bottom:12px;">💳 Cobrar membresía</div>${renewForm}`;
+      renewSection = `<div class="section-title">${ico('card')} Cobrar membresía</div>${renewForm}`;
     }
 
     return `
       ${statusBox}
       <div class="btn-group">
-        <button class="btn btn-success" id="ciEnter" ${active ? '' : 'disabled'}>✓ Registrar entrada</button>
+        <button class="btn btn-success btn-lg" id="ciEnter" ${active ? '' : 'disabled'}>${ico('check')}Registrar entrada</button>
       </div>
       ${active ? '' : '<p class="muted" style="margin-top:8px;">Para entrar, primero debe cobrar la membresía o el uso diario.</p>'}
       <hr class="detail-divider">
@@ -409,22 +423,22 @@
 
   function diarioPanel(client, active, daily, memberActive) {
     if (memberActive) {
-      return `<div class="status-box warn" style="margin-top:12px;">⛔ <strong>Tiene membresía activa</strong>. El uso diario no aplica; el ingreso se registra desde la pestaña Miembro.</div>`;
+      return stateBox('warn', 'info', '<strong>Tiene membresía activa</strong>. El uso diario no aplica; el ingreso se registra desde la pestaña Membresía.');
     }
     if (daily && active) {
       return `
-        <div class="btn-group" style="margin-top:12px;"><button class="btn btn-success" id="ciEnter">✓ Registrar entrada</button></div>`;
+        <div class="btn-group" style="margin-top:12px;"><button class="btn btn-success btn-lg" id="ciEnter">${ico('check')}Registrar entrada</button></div>`;
     }
     const dp = dailyPlan();
     return `
-      <div class="status-box off" style="margin-top:12px;">🎟️ <strong>Uso diario</strong>: cobra el día${dp ? ` (${money(dp.price)})` : ''} y registra la entrada.</div>
+      ${stateBox('info', 'ticket', `<strong>Uso diario</strong>: cobra el día${dp ? ` (${money(dp.price)})` : ''} y registra la entrada.`)}
       <div class="form-row" style="margin-top:12px;">
-        <div class="form-group"><label>Método:</label><select id="dailyMethod">${methodSelectOptions()}</select></div>
+        <div class="form-group"><label>Método</label><select id="dailyMethod">${methodSelectOptions()}</select></div>
       </div>
       <div class="form-row ref-box" id="dailyRefBox" style="display:none;">
-        <div class="form-group" style="grid-column:1 / -1;"><label>Código de transacción de Yappy:</label><input id="dailyRef" class="wide-input" autocomplete="off" placeholder="Ej: 1A2B3C4D"></div>
+        <div class="form-group" style="grid-column:1 / -1;"><label>Código de transacción de Yappy</label><input id="dailyRef" class="wide-input" autocomplete="off" placeholder="Ej: 1A2B3C4D"></div>
       </div>
-      <div class="btn-group"><button class="btn btn-primary" id="dailyBtn" ${dp ? '' : 'disabled'}>🎟️ Cobrar y registrar entrada</button></div>`;
+      <div class="btn-group"><button class="btn btn-primary" id="dailyBtn" ${dp ? '' : 'disabled'}>${ico('ticket')}Cobrar y registrar entrada</button></div>`;
   }
 
   function bindCheckinPanel() {
@@ -538,11 +552,12 @@
         const mins = Math.round((Date.now() - en.check_in_at) / 60000);
         return `<div class="inside-row">
           <button class="inside-info" data-detail="${esc(en.id)}" title="Ver detalle">
-            <strong>${esc(en.full_name)}</strong>
-            <span class="muted">Entró ${timeOf(en.check_in_at)}</span>
+            <span class="avatar avatar-sm" aria-hidden="true">${esc(initials(en.full_name))}</span>
+            <span class="inside-text"><strong>${esc(en.full_name)}</strong>
+            <span class="muted">Entró ${timeOf(en.check_in_at)}</span></span>
           </button>
-          <span class="inside-time">⏱ ${mins} min</span>
-          <button class="btn btn-danger btn-small" data-out="${esc(en.id)}">Salida</button>
+          <span class="inside-time">${ico('clock')} ${mins} min</span>
+          <button class="btn btn-danger btn-small" data-out="${esc(en.id)}">${ico('logout')}Salida</button>
         </div>`;
       }).join('')
     }</div>`;
@@ -568,7 +583,7 @@
         <div class="inside-stat"><span class="muted">Vence</span><strong>${client.membership_end ? fmtDate(client.membership_end) : '–'}</strong></div>
       </div>
       <div class="btn-group">
-        <button class="btn btn-danger" data-out-modal="${esc(en.id)}">Registrar salida</button>
+        <button class="btn btn-danger" data-out-modal="${esc(en.id)}">${ico('logout')}Registrar salida</button>
         <button class="btn btn-secondary" data-close-modal>Cerrar</button>
       </div>`);
   }
@@ -581,38 +596,39 @@
     const q = $('clientSearch').value.trim();
     const { clients } = await api('GET', 'clients?q=' + encodeURIComponent(q));
     $('clientsBody').innerHTML = clients.map((c) => `
-      <tr>
-        <td><strong>${esc(c.full_name)}</strong></td>
-        <td>${esc(c.cedula || '–')}</td>
-        <td>${esc(c.phone || '–')}</td>
-        <td>${esc(c.membership_plan || '—')}</td>
-        <td>${fmtDate(c.membership_end)}</td>
-        <td>${badge(c.membership_status)}</td>
-        <td class="row-actions">
-          <button class="btn btn-secondary btn-small" data-detail="${esc(c.id)}">Ver</button>
-          ${can('admin') ? `<button class="btn btn-secondary btn-small" data-edit="${esc(c.id)}">Editar</button>` : ''}
+      <tr class="st-${esc(c.membership_status)}">
+        <td class="c-name"><span class="avatar avatar-sm cell-ico" aria-hidden="true">${esc(initials(c.full_name))}</span><strong>${esc(c.full_name)}</strong></td>
+        <td class="c-ced">${ico('idcard', 'cell-ico')}${esc(c.cedula || '–')}</td>
+        <td class="c-phone">${ico('phone', 'cell-ico')}${esc(c.phone || '–')}</td>
+        <td class="c-plan">${esc(c.membership_plan || '—')}</td>
+        <td class="c-end">${ico('calendar', 'cell-ico')}<span class="cell-label">Vence</span>${fmtDate(c.membership_end)}</td>
+        <td class="c-status">${badge(c.membership_status)}</td>
+        <td class="row-actions c-actions">
+          <button class="btn btn-secondary btn-small" data-detail="${esc(c.id)}">${ico('eye')}Ver</button>
+          ${can('admin') ? `<button class="btn btn-secondary btn-small" data-edit="${esc(c.id)}">${ico('edit')}Editar</button>` : ''}
         </td>
-      </tr>`).join('') || '<tr><td colspan="7" class="muted">Sin clientes que mostrar.</td></tr>';
+      </tr>`).join('') || '<tr class="empty-row"><td colspan="7" class="muted">Sin clientes que mostrar.</td></tr>';
   }
 
   function clientFormHtml(c = {}) {
     const v = (k) => esc(c[k] ?? '');
     return `
-      <div class="modal-header">${c.id ? '✏️ Editar cliente' : '➕ Nuevo cliente'}</div>
+      <button class="modal-close" type="button" data-close aria-label="Cerrar">${ico('x')}</button>
+      <div class="modal-header">${c.id ? 'Editar cliente' : 'Nuevo cliente'}</div>
       <form id="clientForm" data-id="${esc(c.id || '')}">
-        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nombre completo:</label><input name="full_name" required value="${v('full_name')}"></div></div>
+        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nombre completo</label><input name="full_name" required value="${v('full_name')}"></div></div>
         <div class="form-row">
-          <div class="form-group"><label>Cédula:</label><input name="cedula" value="${v('cedula')}"></div>
-          <div class="form-group"><label>Teléfono (WhatsApp):</label><input name="phone" type="tel" required placeholder="6789-0123" value="${v('phone')}"><span class="muted">Obligatorio. Se usa para enviar la tarjeta.</span></div>
+          <div class="form-group"><label>Cédula</label><input name="cedula" value="${v('cedula')}"></div>
+          <div class="form-group"><label>Teléfono (WhatsApp)</label><input name="phone" type="tel" required placeholder="6789-0123" value="${v('phone')}"><span class="muted">Obligatorio. Se usa para enviar la tarjeta.</span></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>Email:</label><input name="email" type="email" value="${v('email')}"></div>
-          <div class="form-group"><label>Fecha de nacimiento:</label><input name="birth_date" type="date" value="${v('birth_date')}"></div>
+          <div class="form-group"><label>Email</label><input name="email" type="email" value="${v('email')}"></div>
+          <div class="form-group"><label>Fecha de nacimiento</label><input name="birth_date" type="date" value="${v('birth_date')}"></div>
         </div>
-        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Notas:</label><input name="notes" value="${v('notes')}"></div></div>
+        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Notas</label><input name="notes" value="${v('notes')}"></div></div>
         <div class="error" id="clientError"></div>
         <div class="btn-group">
-          <button class="btn btn-primary" type="submit">✓ Guardar</button>
+          <button class="btn btn-primary" type="submit">${ico('check')}Guardar</button>
           <button class="btn btn-secondary" type="button" data-close>Cancelar</button>
         </div>
       </form>`;
@@ -626,14 +642,14 @@
     return `
       <form id="memberForm" data-id="${esc(clientId)}">
         <div class="form-row">
-          <div class="form-group"><label>Plan:</label><select name="plan_id">${plans.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} — ${money(p.price)}</option>`).join('')}</select></div>
-          <div class="form-group"><label>Método:</label><select name="method">${methodOptions}</select></div>
+          <div class="form-group"><label>Plan</label><select name="plan_id">${plans.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} — ${money(p.price)}</option>`).join('')}</select></div>
+          <div class="form-group"><label>Método</label><select name="method">${methodOptions}</select></div>
         </div>
         <div class="form-row ref-box" style="display:none;">
-          <div class="form-group" style="grid-column:1 / -1;"><label>Código de transacción de Yappy:</label><input name="reference" class="wide-input" autocomplete="off" placeholder="Ej: 1A2B3C4D"></div>
+          <div class="form-group" style="grid-column:1 / -1;"><label>Código de transacción de Yappy</label><input name="reference" class="wide-input" autocomplete="off" placeholder="Ej: 1A2B3C4D"></div>
         </div>
         <div class="error"></div>
-        <div class="btn-group"><button class="btn btn-primary" type="submit">💳 Cobrar membresía</button></div>
+        <div class="btn-group"><button class="btn btn-primary" type="submit">${ico('card')}Cobrar membresía</button></div>
       </form>`;
   }
 
@@ -652,16 +668,23 @@
       </tr>`).join('');
 
     openModal(`
-      <button class="modal-close" data-close>✕</button>
-      <div class="modal-header">${esc(client.full_name)}</div>
-      <p class="muted">Cédula ${esc(client.cedula || '–')} · Tel. ${esc(client.phone || '–')} · ${esc(client.email || '')}</p>
-      <p style="margin-top:8px;">Estado: ${badge(client.membership_status)} · Plan: <strong>${esc(client.membership_plan || '—')}</strong> · Vence: <strong>${fmtDate(client.membership_end)}</strong></p>
+      <button class="modal-close" type="button" data-close aria-label="Cerrar">${ico('x')}</button>
+      <div class="detail-head">
+        <span class="avatar avatar-lg">${esc(initials(client.full_name))}</span>
+        <div class="modal-header" style="margin:0;">${esc(client.full_name)}</div>
+      </div>
+      <div class="attr-list attr-list-wrap">${attr('idcard', client.cedula || '–')}${attr('phone', client.phone || '–')}${client.email ? attr('mail', client.email) : ''}</div>
+      <div class="member-sum st-${esc(client.membership_status)}">
+        <div><span class="member-sum-label">Estado</span>${badge(client.membership_status)}</div>
+        <div><span class="member-sum-label">Plan</span><strong>${esc(client.membership_plan || '—')}</strong></div>
+        <div><span class="member-sum-label">Vence</span><strong class="member-sum-end">${fmtDate(client.membership_end)}</strong></div>
+      </div>
       <hr class="detail-divider">
-      <div class="card-title" style="font-size:15px;">🔐 Portal del socio</div>
+      <div class="section-title">${ico('mobile')} Portal del socio</div>
       <p class="muted">El socio entra con su cédula y su contraseña para ver su tarjeta y el horario. Al crear o restablecer el acceso se genera una contraseña temporal.</p>
-      ${client.cedula ? `<div class="btn-group"><button class="btn btn-secondary btn-small" data-portal-access>🔑 Crear o restablecer acceso</button></div><div id="portalResult"></div>` : '<p class="muted">Agrega la cédula del cliente para darle acceso al portal.</p>'}
+      ${client.cedula ? `<div class="btn-group"><button class="btn btn-secondary btn-small" data-portal-access>${ico('key')}Crear o restablecer acceso</button></div><div id="portalResult"></div>` : '<p class="muted">Agrega la cédula del cliente para darle acceso al portal.</p>'}
       <hr class="detail-divider">
-      <div class="card-title" style="font-size:15px;">🪪 Tarjeta del cliente</div>
+      <div class="section-title">${ico('idcard')} Tarjeta del cliente</div>
       ${client.code ? `
       <div class="client-card-box">
         <img id="qrImg" class="qr-img" alt="QR del cliente">
@@ -669,42 +692,42 @@
           <div class="muted">Código interno · <span id="cardShareInfo"></span></div>
           <div class="client-code">${esc(client.code)}</div>
           <div class="card-actions">
-            <button class="btn btn-secondary btn-small" data-card-download>⬇️ Descargar tarjeta</button>
-            <button class="btn btn-success btn-small" data-card-share>📤 Enviar por WhatsApp</button>
-            <button class="btn btn-secondary btn-small" data-wa-chat>💬 Abrir chat</button>
+            <button class="btn btn-secondary btn-small" data-card-download>${ico('download')}Descargar tarjeta</button>
+            <button class="btn btn-success btn-small" data-card-share>${ico('send')}Enviar por WhatsApp</button>
+            <button class="btn btn-secondary btn-small" data-wa-chat>${ico('message')}Abrir chat</button>
           </div>
         </div>
       </div>` : `
-      <div class="status-box warn">🔒 <strong>Tarjeta protegida.</strong> Para descargarla, enviarla o verla de nuevo, solicítalo a la administración.</div>
-      <div class="btn-group"><button class="btn btn-secondary btn-small" data-wa-chat>💬 Abrir chat</button></div>`}
-      ${can('admin') && client.card_open !== 1 ? '<div class="btn-group"><button class="btn btn-secondary btn-small" data-card-open>🔓 Permitir un uso a recepción</button></div>' : ''}
+      ${stateBox('warn', 'lock', '<strong>Tarjeta protegida.</strong> Para descargarla, enviarla o verla de nuevo, solicítalo a la administración.')}
+      <div class="btn-group"><button class="btn btn-secondary btn-small" data-wa-chat>${ico('message')}Abrir chat</button></div>`}
+      ${can('admin') && client.card_open !== 1 ? `<div class="btn-group"><button class="btn btn-secondary btn-small" data-card-open>${ico('unlock')}Permitir un uso a recepción</button></div>` : ''}
       <hr class="detail-divider">
-      <div class="card-title" style="font-size:15px;">📒 Cuenta del cliente</div>
-      <div class="status-box ${bal > 0.005 ? 'warn' : 'ok'}">Saldo pendiente: <strong>${money(bal)}</strong></div>
+      <div class="section-title">${ico('book')} Cuenta del cliente</div>
+      ${stateBox(bal > 0.005 ? 'warn' : 'ok', bal > 0.005 ? 'alert' : 'check-circle', `Saldo pendiente: <strong>${money(bal)}</strong>`)}
       ${bal > 0.005 ? `
       <form id="abonoForm" data-id="${esc(client.id)}" style="margin-top:12px;">
         <div class="form-row">
-          <div class="form-group"><label>Monto del abono:</label><input name="amount" type="number" step="0.01" min="0.01" max="${bal.toFixed(2)}" required></div>
-          <div class="form-group"><label>Método:</label><select name="method">${Object.entries(METHOD_LABEL).filter(([v]) => v !== 'cuenta').map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
+          <div class="form-group"><label>Monto del abono</label><input name="amount" type="number" step="0.01" min="0.01" max="${bal.toFixed(2)}" required></div>
+          <div class="form-group"><label>Método</label><select name="method">${Object.entries(METHOD_LABEL).filter(([v]) => v !== 'cuenta').map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
         </div>
         <div class="error" id="abonoError"></div>
-        <div class="btn-group"><button class="btn btn-success" type="submit">✓ Registrar abono</button></div>
+        <div class="btn-group"><button class="btn btn-success" type="submit">${ico('check')}Registrar abono</button></div>
       </form>` : ''}
-      ${ledger.movements.length ? `<table style="margin-top:12px;"><thead><tr><th>Día</th><th>Tipo</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${movRows}</tbody></table>` : '<p class="muted">Sin movimientos de cuenta.</p>'}
+      ${ledger.movements.length ? `<table class="mini-table" style="margin-top:12px;"><thead><tr><th>Día</th><th>Tipo</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>${movRows}</tbody></table>` : '<p class="muted">Sin movimientos de cuenta.</p>'}
       <hr class="detail-divider">
-      <div class="card-title" style="font-size:15px;">💳 Cobrar membresía</div>
+      <div class="section-title">${ico('card')} Cobrar membresía</div>
       ${membershipFormHtml(client.id)}
       <hr class="detail-divider">
-      <div class="card-title" style="font-size:15px;">Membresías</div>
-      ${memberships.length ? `<table><thead><tr><th>Plan</th><th>Desde</th><th>Hasta</th><th>Monto</th></tr></thead><tbody>${
+      <div class="section-title">${ico('calendar')} Membresías</div>
+      ${memberships.length ? `<table class="mini-table"><thead><tr><th>Plan</th><th>Desde</th><th>Hasta</th><th>Monto</th></tr></thead><tbody>${
         memberships.map((m) => `<tr><td>${esc(m.plan_name)}</td><td>${fmtDate(m.start_date)}</td><td>${fmtDate(m.end_date)}</td><td>${money(m.amount)}</td></tr>`).join('')
       }</tbody></table>` : '<p class="muted">Sin membresías.</p>'}
-      <div class="card-title" style="font-size:15px;margin-top:16px;">Últimas entradas</div>
-      ${entries.length ? `<table><thead><tr><th>Día</th><th>Entrada</th><th>Salida</th></tr></thead><tbody>${
+      <div class="section-title" style="margin-top:20px;">${ico('enter')} Últimas entradas</div>
+      ${entries.length ? `<table class="mini-table"><thead><tr><th>Día</th><th>Entrada</th><th>Salida</th></tr></thead><tbody>${
         entries.slice(0, 10).map((e) => `<tr><td>${fmtDate(e.day)}</td><td>${timeOf(e.check_in_at)}</td><td>${e.check_out_at ? timeOf(e.check_out_at) : 'Dentro'}</td></tr>`).join('')
       }</tbody></table>` : '<p class="muted">Sin entradas registradas.</p>'}
-      <div class="card-title" style="font-size:15px;margin-top:16px;">Pagos</div>
-      ${payments.length ? `<table><thead><tr><th>Día</th><th>Método</th><th>Monto</th></tr></thead><tbody>${
+      <div class="section-title" style="margin-top:20px;">${ico('dollar')} Pagos</div>
+      ${payments.length ? `<table class="mini-table"><thead><tr><th>Día</th><th>Método</th><th>Monto</th></tr></thead><tbody>${
         payments.slice(0, 10).map((p) => `<tr><td>${fmtDate(p.day)}</td><td>${METHOD_LABEL[p.method] || esc(p.method)}</td><td>${money(p.amount)}</td></tr>`).join('')
       }</tbody></table>` : '<p class="muted">Sin pagos registrados.</p>'}
     `);
@@ -772,8 +795,8 @@
         <td>${money(p.price)}</td>
         <td>${low ? '<span class="badge badge-warning">Bajo stock</span>' : '<span class="badge badge-success">OK</span>'}</td>
         <td class="row-actions">
-          ${can('admin') ? `<button class="btn btn-secondary btn-small" data-restock="${esc(p.id)}">+ Stock</button>
-          <button class="btn btn-secondary btn-small" data-edit-product="${esc(p.id)}">Editar</button>` : ''}
+          ${can('admin') ? `<button class="btn btn-secondary btn-small" data-restock="${esc(p.id)}">${ico('plus')}Stock</button>
+          <button class="btn btn-secondary btn-small" data-edit-product="${esc(p.id)}">${ico('edit')}Editar</button>` : ''}
         </td>
       </tr>`;
     }).join('') || '<tr><td colspan="6" class="muted">Aún no hay productos.</td></tr>';
@@ -812,7 +835,7 @@
           <button data-inc="${i}" aria-label="Agregar uno">+</button>
         </div>
         <strong class="cart-amt">${money(c.qty * c.price)}</strong>
-        <button class="btn-x" data-remove="${i}" title="Quitar producto">✕</button>
+        <button class="btn-x" data-remove="${i}" title="Quitar producto" aria-label="Quitar producto">${ico('x')}</button>
       </div>`).join('') : '<div class="cart-empty">Toca un producto para agregarlo a la venta.</div>';
 
     const units = cart.reduce((s, c) => s + c.qty, 0);
@@ -823,9 +846,9 @@
 
     $('posClientInfo').innerHTML = posClient
       ? `<div class="client-chip ${posClient.balance > 0.005 ? 'debt' : ''}">
-           <div><strong>👤 ${esc(posClient.full_name)}</strong>
+           <div><strong>${ico('user')} ${esc(posClient.full_name)}</strong>
              <div class="muted">Saldo pendiente: ${money(posClient.balance)}</div></div>
-           ${posClient.balance > 0.005 ? '<button class="btn btn-success btn-small" data-pay-debt>💵 Cobrar saldo</button>' : ''}
+           ${posClient.balance > 0.005 ? `<button class="btn btn-success btn-small" data-pay-debt>${ico('dollar')}Cobrar saldo</button>` : ''}
            <button class="btn btn-secondary btn-small" data-clear-client>Quitar</button>
          </div>`
       : '<p class="muted" style="margin-top:6px;">Sin cliente: venta de mostrador.</p>';
@@ -1117,14 +1140,14 @@
       <p class="muted">${esc(period)}</p>
       ${r.rows.length ? `
       <div class="form-group" style="margin-top:12px;">
-        <input id="detailSearch" class="wide-input" type="search" autocomplete="off" placeholder="Buscar por monto, código de Yappy, persona o producto...">
+        <div class="search-field">${ico('search')}<input id="detailSearch" class="wide-input" type="search" autocomplete="off" placeholder="Buscar por monto, código de Yappy, persona o producto..."></div>
       </div>
       <p class="muted" id="detailCount"></p>
       <div class="detail-table-wrap" style="margin-top:8px;">
         <table><thead><tr>${r.columns.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody id="detailBody"></tbody></table>
       </div>` : '<p class="muted" style="margin-top:12px;">Sin registros en este período.</p>'}
       <div class="btn-group">
-        <button class="btn btn-success" id="detailXlsx" ${r.rows.length ? '' : 'disabled'}>📥 Descargar Excel</button>
+        <button class="btn btn-success" id="detailXlsx" ${r.rows.length ? '' : 'disabled'}>${ico('download')}Descargar Excel</button>
         <button class="btn btn-secondary" data-close-modal>Cerrar</button>
       </div>`);
     // En "Saldo pendiente": tocar un cliente abre su ficha, donde se registra el abono.
@@ -1282,14 +1305,14 @@
   }
   function openScanner() {
     openModal(`
-      <div class="modal-header">📷 Escanear QR del cliente</div>
+      <div class="modal-header">Escanear QR del cliente</div>
       <div class="scan-box"><video id="scanVideo" playsinline muted></video></div>
       <p class="muted" id="scanHint" style="margin-top:8px;">Apunta la cámara al QR de la tarjeta del cliente.</p>
       <form id="scanForm" style="margin-top:12px;">
-        <div class="form-group"><label>¿No hay cámara? Escribe o pega el código:</label>
+        <div class="form-group"><label>¿No hay cámara? Escribe o pega el código</label>
           <input id="scanCode" class="wide-input" autocomplete="off" placeholder="MF-XXXXXX"></div>
         <div class="btn-group">
-          <button class="btn btn-primary" type="submit">🔍 Buscar</button>
+          <button class="btn btn-primary" type="submit">${ico('search')}Buscar</button>
           <button class="btn btn-secondary" type="button" data-close-modal>Cerrar</button>
         </div>
       </form>`);
@@ -1376,15 +1399,15 @@
     const active = st === 'activa' || st === 'por_vencer';
     const endTxt = fmtDate(client.membership_end);
     const statusLine = openEntry
-      ? `<div class="status-box ok">🏋️ <strong>Ya está dentro</strong> desde ${timeOf(openEntry.check_in_at)}.</div>`
+      ? stateBox('ok', 'dumbbell', `<strong>Ya está dentro</strong> desde ${timeOf(openEntry.check_in_at)}.`)
       : active
-        ? `<div class="status-box ok">✅ <strong>${st === 'por_vencer' ? 'Membresía por vencer' : 'Membresía activa'}</strong> hasta el ${endTxt}${client.membership_plan ? ` · ${esc(client.membership_plan)}` : ''}</div>`
-        : `<div class="status-box off">⛔ ${st === 'vencida'
+        ? stateBox(st === 'por_vencer' ? 'warn' : 'ok', st === 'por_vencer' ? 'clock' : 'check-circle', `<strong>${st === 'por_vencer' ? 'Membresía por vencer' : 'Membresía activa'}</strong> hasta el ${endTxt}${client.membership_plan ? ` · ${esc(client.membership_plan)}` : ''}`)
+        : stateBox('off', 'ban', st === 'vencida'
           ? `<strong>Membresía vencida</strong> desde el ${endTxt}. No puede entrar hasta renovar.`
-          : '<strong>Sin membresía.</strong> Debe cobrar una membresía para entrar.'}</div>`;
+          : '<strong>Sin membresía.</strong> Debe cobrar una membresía para entrar.');
     const action = openEntry
-      ? '<button class="btn btn-danger scan-action" id="scanAction" type="button">🚪 Registrar salida</button>'
-      : `<button class="btn btn-success scan-action" id="scanAction" type="button" ${active ? '' : 'disabled'}>✓ Registrar ingreso</button>`;
+      ? `<button class="btn btn-danger scan-action" id="scanAction" type="button">${ico('logout')}Registrar salida</button>`
+      : `<button class="btn btn-success scan-action" id="scanAction" type="button" ${active ? '' : 'disabled'}>${ico('check')}Registrar ingreso</button>`;
 
     openModal(`
       <div class="scan-card">
@@ -1394,7 +1417,7 @@
             <div class="scan-name">${esc(client.full_name)}</div>
             <div class="muted">${esc(client.membership_plan || 'Sin plan')}</div>
           </div>
-          <button class="scan-x" type="button" id="scanClose" aria-label="Cerrar sin registrar">✕</button>
+          <button class="scan-x" type="button" id="scanClose" aria-label="Cerrar sin registrar">${ico('x')}</button>
         </div>
         ${statusLine}
         <p class="scan-err" id="scanErr" hidden></p>
@@ -1453,7 +1476,7 @@
       // No se reactiva la cámara sola: si el mismo QR sigue frente a ella, se leería otra vez en bucle.
       // La recepción toca "Escanear otra vez" cuando quiera leer otra tarjeta.
       if ($('scanHint')) {
-        $('scanHint').innerHTML = `${esc(err.message)}. <button class="btn btn-secondary" type="button" id="scanAgain" style="margin-left:8px;">📷 Escanear otra vez</button>`;
+        $('scanHint').innerHTML = `${esc(err.message)}. <button class="btn btn-secondary btn-small" type="button" id="scanAgain" style="margin-left:8px;">${ico('scan')}Escanear otra vez</button>`;
         $('scanAgain')?.addEventListener('click', () => startCamera());
       }
     }
@@ -1474,14 +1497,14 @@
         <span class="sale-main"><strong>${esc(s.client_name || 'Mostrador')}</strong>
           <span class="muted">${esc(s.items || '')}</span></span>
         <span class="sale-amt"><strong>${money(s.total)}</strong>
-          <span class="muted">${s.on_account ? '📒 Cuenta' : esc(METHOD_LABEL[s.method] || s.method)}</span></span>
+          <span class="muted">${s.on_account ? 'A cuenta' : esc(METHOD_LABEL[s.method] || s.method)}</span></span>
       </button>`).join('') || '<p class="muted">Aún no hay ventas hoy.</p>';
   }
 
   async function openSaleDetail(id) {
     const { sale, lines } = await api('GET', 'sales/' + encodeURIComponent(id));
     openModal(`
-      <div class="modal-header">🧾 Venta de ${timeSql(sale.created_at)}</div>
+      <div class="modal-header">Venta de ${timeSql(sale.created_at)}</div>
       <p class="muted">${esc(sale.client_name || 'Mostrador')}${sale.client_phone ? ` · Tel. ${esc(sale.client_phone)}` : ''}</p>
       <div class="detail-table-wrap" style="margin-top:12px;"><table>
         <thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>Subtotal</th></tr></thead>
@@ -1489,7 +1512,7 @@
       </table></div>
       <div class="sum-box" style="margin-top:12px;">
         <div class="sum-row sum-total"><span>Total</span><span>${money(sale.total)}</span></div>
-        <div class="sum-row"><span>Pago</span><span>${sale.on_account ? '📒 Cargado a cuenta' : esc(METHOD_LABEL[sale.method] || sale.method)}</span></div>
+        <div class="sum-row"><span>Pago</span><span>${sale.on_account ? 'Cargado a cuenta' : esc(METHOD_LABEL[sale.method] || sale.method)}</span></div>
         ${sale.reference ? `<div class="sum-row"><span>Código Yappy</span><strong>${esc(sale.reference)}</strong></div>` : ''}
       </div>
       <div class="btn-group"><button class="btn btn-secondary" data-close-modal>Cerrar</button></div>`);
@@ -1500,20 +1523,21 @@
     const cur = p.icon || '📦';
     const cats = [...new Set(products.map((x) => x.category).filter(Boolean))];
     return `
-      <div class="modal-header">${isEdit ? '✏️ Editar producto' : '➕ Nuevo producto'}</div>
+      <button class="modal-close" type="button" data-close aria-label="Cerrar">${ico('x')}</button>
+      <div class="modal-header">${isEdit ? 'Editar producto' : 'Nuevo producto'}</div>
       <form id="productForm" data-id="${esc(p.id || '')}">
-        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nombre:</label><input name="name" required value="${esc(p.name ?? '')}"></div></div>
+        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nombre</label><input name="name" required value="${esc(p.name ?? '')}"></div></div>
         <div class="form-row">
-          <div class="form-group"><label>Precio:</label><input name="price" type="number" step="0.01" min="0" required value="${p.price ?? ''}"></div>
-          <div class="form-group"><label>Categoría:</label><input name="category" list="catList" placeholder="Ej: Bebidas" value="${esc(p.category ?? '')}"><datalist id="catList">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></div>
+          <div class="form-group"><label>Precio</label><input name="price" type="number" step="0.01" min="0" required value="${p.price ?? ''}"></div>
+          <div class="form-group"><label>Categoría</label><input name="category" list="catList" placeholder="Ej: Bebidas" value="${esc(p.category ?? '')}"><datalist id="catList">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label>Stock mínimo:</label><input name="min_stock" type="number" min="0" value="${p.min_stock ?? 5}"></div>
-          ${isEdit ? '<div class="form-group"></div>' : '<div class="form-group"><label>Stock inicial:</label><input name="stock" type="number" min="0" value="0"></div>'}
+          <div class="form-group"><label>Stock mínimo</label><input name="min_stock" type="number" min="0" value="${p.min_stock ?? 5}"></div>
+          ${isEdit ? '<div class="form-group"></div>' : '<div class="form-group"><label>Stock inicial</label><input name="stock" type="number" min="0" value="0"></div>'}
         </div>
         <div class="form-row">
           <div class="form-group" style="grid-column:1 / -1;">
-            <label>Icono:</label>
+            <label>Icono</label>
             <div class="icon-grid">${PRODUCT_ICONS.map((i) => (
               `<button type="button" class="icon-opt ${i === cur ? 'sel' : ''}" data-icon="${i}">${i}</button>`
             )).join('')}</div>
@@ -1522,7 +1546,7 @@
         </div>
         <div class="error" id="productError"></div>
         <div class="btn-group">
-          <button class="btn btn-primary" type="submit">✓ Guardar</button>
+          <button class="btn btn-primary" type="submit">${ico('check')}Guardar</button>
           <button class="btn btn-secondary" type="button" data-close>Cancelar</button>
         </div>
       </form>`;
@@ -1574,17 +1598,17 @@
       card.className = 'card';
       card.id = 'noticesCard';
       card.innerHTML = `
-        <div class="card-title"><span class="card-title-icon">📢</span> Avisos para socios</div>
+        <div class="card-title"><span class="card-title-icon">${ico('megaphone')}</span> Avisos para socios</div>
         <p class="muted">Aparecen cuando el socio abre su portal. Por ejemplo: día cerrado, feriado o cambio de horario.</p>
         <form id="noticeForm">
-          <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Título:</label><input name="title" maxlength="120" required placeholder="Ej. Cerrado por feriado"></div></div>
-          <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Mensaje:</label><input name="body" maxlength="1000" required placeholder="Ej. El gimnasio estará cerrado el lunes 3 de noviembre."></div></div>
+          <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Título</label><input name="title" maxlength="120" required placeholder="Ej. Cerrado por feriado"></div></div>
+          <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Mensaje</label><input name="body" maxlength="1000" required placeholder="Ej. El gimnasio estará cerrado el lunes 3 de noviembre."></div></div>
           <div class="form-row">
-            <div class="form-group"><label>Desde (opcional):</label><input name="starts_on" type="date"></div>
-            <div class="form-group"><label>Hasta (opcional):</label><input name="ends_on" type="date"></div>
+            <div class="form-group"><label>Desde (opcional)</label><input name="starts_on" type="date"></div>
+            <div class="form-group"><label>Hasta (opcional)</label><input name="ends_on" type="date"></div>
           </div>
           <div class="error" id="noticeError"></div>
-          <div class="btn-group"><button class="btn btn-primary" type="submit">📢 Publicar aviso</button></div>
+          <div class="btn-group"><button class="btn btn-primary" type="submit">${ico('megaphone')}Publicar aviso</button></div>
         </form>
         <div id="noticesList" style="margin-top:12px;"></div>`;
       $('configView').appendChild(card);
@@ -1631,16 +1655,15 @@
   function ensureResetCard() {
     if (me.role !== 'creator' || $('resetCard')) return;
     const card = document.createElement('div');
-    card.className = 'card';
+    card.className = 'card card-danger';
     card.id = 'resetCard';
-    card.style.borderLeft = '4px solid #DC2626';
     card.innerHTML = `
-      <div class="card-title"><span class="card-title-icon">⚠️</span> Reiniciar datos (fin de la prueba Beta)</div>
+      <div class="card-title"><span class="card-title-icon danger">${ico('alert')}</span> Reiniciar datos (fin de la prueba Beta)</div>
       <p class="muted">Borra clientes, membresías, pagos, entradas, ventas, cuentas por cobrar e inventario de productos. Conserva usuarios, planes y la configuración del gimnasio. <strong>No se puede deshacer.</strong> Si necesitas conservar algo, descárgalo antes en Reportes.</p>
       <div class="form-row">
         <div class="form-group"><label>Escribe <strong>REINICIAR</strong> para confirmar:</label><input id="resetConfirm" autocomplete="off"></div>
       </div>
-      <div class="btn-group"><button class="btn btn-danger" id="resetBtn" disabled>🗑️ Reiniciar todos los datos</button></div>`;
+      <div class="btn-group"><button class="btn btn-danger" id="resetBtn" disabled>${ico('trash')}Reiniciar todos los datos</button></div>`;
     $('configView').appendChild(card);
     $('resetConfirm').addEventListener('input', () => {
       $('resetBtn').disabled = $('resetConfirm').value.trim() !== 'REINICIAR';
@@ -1677,7 +1700,7 @@
         <td>${esc(p.name)}</td>
         <td>${p.duration_days} día(s)</td>
         <td>${money(p.price)}</td>
-        <td class="row-actions">${canEdit ? `<button class="btn btn-secondary btn-small" data-edit-plan="${esc(p.id)}">Editar</button>` : ''}</td>
+        <td class="row-actions">${canEdit ? `<button class="btn btn-secondary btn-small" data-edit-plan="${esc(p.id)}">${ico('edit')}Editar</button>` : ''}</td>
       </tr>`).join('');
 
     $('newUserBtn').style.display = canEdit ? '' : 'none';
@@ -1687,12 +1710,12 @@
       const removable = me.role === 'creator' && u.id !== me.id;
       return `
       <tr>
-        <td>${esc(u.name)}${u.id === me.id ? ' <span class="muted">(tú)</span>' : ''}</td>
+        <td><span class="user-cell"><span class="avatar avatar-sm" aria-hidden="true">${esc(initials(u.name))}</span><strong>${esc(u.name)}</strong>${u.id === me.id ? ' <span class="muted">(tú)</span>' : ''}</span></td>
         <td>${esc(u.email)}</td>
-        <td>${esc(ROLE_LABEL[u.role])}</td>
+        <td><span class="role-tag role-${esc(u.role)}">${esc(ROLE_LABEL[u.role])}</span></td>
         <td class="row-actions">
-          ${editable ? `<button class="btn btn-secondary btn-small" data-edit-user="${esc(u.id)}">Editar</button>` : ''}
-          ${removable ? `<button class="btn btn-danger btn-small" data-del-user="${esc(u.id)}">Eliminar</button>` : ''}
+          ${editable ? `<button class="btn btn-secondary btn-small" data-edit-user="${esc(u.id)}">${ico('edit')}Editar</button>` : ''}
+          ${removable ? `<button class="btn btn-danger btn-small" data-del-user="${esc(u.id)}">${ico('trash')}Eliminar</button>` : ''}
         </td>
       </tr>`;
     }).join('');
@@ -1700,16 +1723,17 @@
 
   function planFormHtml(p) {
     return `
-      <div class="modal-header">✏️ Editar plan</div>
+      <button class="modal-close" type="button" data-close aria-label="Cerrar">${ico('x')}</button>
+      <div class="modal-header">Editar plan</div>
       <form id="planForm" data-id="${esc(p.id)}">
-        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nombre:</label><input name="name" required value="${esc(p.name)}"></div></div>
+        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nombre</label><input name="name" required value="${esc(p.name)}"></div></div>
         <div class="form-row">
-          <div class="form-group"><label>Precio:</label><input name="price" type="number" step="0.01" min="0" required value="${p.price}"></div>
-          <div class="form-group"><label>Duración (días):</label><input name="duration_days" type="number" min="1" required value="${p.duration_days}"></div>
+          <div class="form-group"><label>Precio</label><input name="price" type="number" step="0.01" min="0" required value="${p.price}"></div>
+          <div class="form-group"><label>Duración (días)</label><input name="duration_days" type="number" min="1" required value="${p.duration_days}"></div>
         </div>
         <div class="error" id="planError"></div>
         <div class="btn-group">
-          <button class="btn btn-primary" type="submit">✓ Guardar</button>
+          <button class="btn btn-primary" type="submit">${ico('check')}Guardar</button>
           <button class="btn btn-secondary" type="button" data-close>Cancelar</button>
         </div>
       </form>`;
@@ -1717,24 +1741,25 @@
 
   function roleOptions() {
     return me.role === 'creator'
-      ? [['creator', '👑 Creador'], ['admin', '📊 Administrador'], ['user', '👤 Recepción']]
-      : [['admin', '📊 Administrador'], ['user', '👤 Recepción']];
+      ? [['creator', 'Creador'], ['admin', 'Administrador'], ['user', 'Recepción']]
+      : [['admin', 'Administrador'], ['user', 'Recepción']];
   }
 
   function userFormHtml() {
     const roles = roleOptions();
     return `
-      <div class="modal-header">➕ Crear usuario</div>
+      <button class="modal-close" type="button" data-close aria-label="Cerrar">${ico('x')}</button>
+      <div class="modal-header">Crear usuario</div>
       <form id="userForm">
-        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nombre:</label><input name="name" required></div></div>
-        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Email:</label><input name="email" type="email" required></div></div>
+        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nombre</label><input name="name" required></div></div>
+        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Email</label><input name="email" type="email" required></div></div>
         <div class="form-row">
-          <div class="form-group"><label>Contraseña (mínimo 8):</label><input name="password" type="password" minlength="8" required></div>
-          <div class="form-group"><label>Rol:</label><select name="role">${roles.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
+          <div class="form-group"><label>Contraseña (mínimo 8)</label><input name="password" type="password" minlength="8" required></div>
+          <div class="form-group"><label>Rol</label><select name="role">${roles.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
         </div>
         <div class="error" id="userError"></div>
         <div class="btn-group">
-          <button class="btn btn-primary" type="submit">✓ Crear</button>
+          <button class="btn btn-primary" type="submit">${ico('check')}Crear</button>
           <button class="btn btn-secondary" type="button" data-close>Cancelar</button>
         </div>
       </form>`;
@@ -1744,25 +1769,26 @@
     const self = u.id === me.id;
     const roles = roleOptions();
     return `
-      <div class="modal-header">✏️ Editar usuario</div>
+      <button class="modal-close" type="button" data-close aria-label="Cerrar">${ico('x')}</button>
+      <div class="modal-header">Editar usuario</div>
       <form id="userEditForm" data-id="${esc(u.id)}">
-        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nombre:</label><input name="name" required value="${esc(u.name)}"></div></div>
+        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nombre</label><input name="name" required value="${esc(u.name)}"></div></div>
         <div class="form-row">
-          <div class="form-group"><label>Rol:</label>
+          <div class="form-group"><label>Rol</label>
             <select name="role" ${self ? 'disabled' : ''}>${roles.map(([v, l]) => `<option value="${v}" ${v === u.role ? 'selected' : ''}>${l}</option>`).join('')}</select>
           </div>
-          <div class="form-group"><label>Estado:</label>
+          <div class="form-group"><label>Estado</label>
             <select name="active" ${self ? 'disabled' : ''}>
               <option value="1" ${u.active ? 'selected' : ''}>Activo</option>
               <option value="0" ${!u.active ? 'selected' : ''}>Desactivado</option>
             </select>
           </div>
         </div>
-        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nueva contraseña (opcional, mínimo 8):</label><input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="Déjala en blanco para no cambiarla"></div></div>
+        <div class="form-row"><div class="form-group" style="grid-column:1 / -1;"><label>Nueva contraseña (opcional, mínimo 8)</label><input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="Déjala en blanco para no cambiarla"></div></div>
         <p class="muted" style="margin-bottom:10px;">${self ? 'No puedes cambiar tu propio rol ni desactivarte.' : 'Al desactivar o cambiar la contraseña, la sesión de ese usuario se cierra.'}</p>
         <div class="error" id="userError"></div>
         <div class="btn-group">
-          <button class="btn btn-primary" type="submit">✓ Guardar</button>
+          <button class="btn btn-primary" type="submit">${ico('check')}Guardar</button>
           <button class="btn btn-secondary" type="button" data-close>Cancelar</button>
         </div>
       </form>`;
@@ -1884,11 +1910,11 @@
             <div class="status-box ok">
               <div class="flex-between">
                 <strong>Acceso creado</strong>
-                <button class="scan-x" type="button" id="portalClose" aria-label="Cerrar sin enviar">✕</button>
+                <button class="scan-x" type="button" id="portalClose" aria-label="Cerrar sin enviar">${ico('x')}</button>
               </div>
               <p style="margin:8px 0;">Cédula: <strong>${esc(r.login)}</strong><br>Contraseña temporal: <strong class="client-code">${esc(r.password)}</strong></p>
               <p class="muted small" style="margin:0;">Esta contraseña no se volverá a mostrar. Si cierras sin enviarla, habrá que restablecer el acceso.</p>
-              <div class="btn-group"><a class="btn btn-success" target="_blank" rel="noopener" href="https://wa.me/${esc(waNumber(cardClient.phone))}?text=${encodeURIComponent(msg)}">📲 Enviar por WhatsApp</a></div>
+              <div class="btn-group"><a class="btn btn-success" target="_blank" rel="noopener" href="https://wa.me/${esc(waNumber(cardClient.phone))}?text=${encodeURIComponent(msg)}">${ico('send')}Enviar por WhatsApp</a></div>
             </div>`;
           $('portalClose').addEventListener('click', () => { $('portalResult').innerHTML = ''; });
         } catch (err) {
@@ -1941,8 +1967,8 @@
     });
     $('newClientBtn').addEventListener('click', () => openModal(clientFormHtml()));
     $('clientsBody').addEventListener('click', (e) => {
-      const detail = e.target.dataset.detail;
-      const edit = e.target.dataset.edit;
+      const detail = e.target.closest('[data-detail]')?.dataset.detail;
+      const edit = e.target.closest('[data-edit]')?.dataset.edit;
       if (detail) clientDetail(detail).catch((err) => toast(err.message, false));
       if (edit) {
         api('GET', 'clients/' + encodeURIComponent(edit))
@@ -1966,7 +1992,8 @@
 
     // Market: carrito y cliente
     $('cartItems').addEventListener('click', (e) => {
-      const t = e.target;
+      const t = e.target.closest('[data-inc],[data-dec],[data-remove]');
+      if (!t) return;
       if (t.dataset.inc !== undefined) changeQty(Number(t.dataset.inc), 1);
       else if (t.dataset.dec !== undefined) changeQty(Number(t.dataset.dec), -1);
       else if (t.dataset.remove !== undefined) { cart.splice(Number(t.dataset.remove), 1); renderCart(); }
@@ -1982,8 +2009,8 @@
       if (row) pickPosClient(row.dataset.pick).catch((err) => toast(err.message, false));
     });
     $('posClientInfo').addEventListener('click', (e) => {
-      if (e.target.dataset.clearClient !== undefined) { posClient = null; renderCart(); }
-      if (e.target.dataset.payDebt !== undefined && posClient) {
+      if (e.target.closest('[data-clear-client]')) { posClient = null; renderCart(); }
+      if (e.target.closest('[data-pay-debt]') && posClient) {
         clientDetail(posClient.id).catch((err) => toast(err.message, false));
       }
     });
@@ -1998,19 +2025,20 @@
     // Inventario (administración de productos)
     $('newProductBtn').addEventListener('click', () => openModal(productFormHtml()));
     $('productsBody').addEventListener('click', (e) => {
-      const restock = e.target.dataset.restock;
-      const edit = e.target.dataset.editProduct;
+      const restock = e.target.closest('[data-restock]')?.dataset.restock;
+      const edit = e.target.closest('[data-edit-product]')?.dataset.editProduct;
       if (restock) {
         const p = products.find((x) => x.id === restock);
         openModal(`
-          <div class="modal-header">+ Stock: ${esc(p.name)}</div>
+          <button class="modal-close" type="button" data-close aria-label="Cerrar">${ico('x')}</button>
+          <div class="modal-header">Agregar stock · ${esc(p.name)}</div>
           <form id="restockForm">
             <div class="form-row">
-              <div class="form-group"><label>Cantidad que ingresa:</label><input name="qty" type="number" min="1" required></div>
+              <div class="form-group"><label>Cantidad que ingresa</label><input name="qty" type="number" min="1" required></div>
             </div>
             <div class="error" id="restockError"></div>
             <div class="btn-group">
-              <button class="btn btn-primary" type="submit">✓ Registrar</button>
+              <button class="btn btn-primary" type="submit">${ico('check')}Registrar</button>
               <button class="btn btn-secondary" type="button" data-close>Cancelar</button>
             </div>
           </form>`);
@@ -2038,13 +2066,13 @@
       }
     });
     $('plansBody').addEventListener('click', (e) => {
-      const id = e.target.dataset.editPlan;
+      const id = e.target.closest('[data-edit-plan]')?.dataset.editPlan;
       if (id) openModal(planFormHtml(plans.find((p) => p.id === id)));
     });
     $('newUserBtn').addEventListener('click', () => openModal(userFormHtml()));
     $('usersBody').addEventListener('click', async (e) => {
-      const editId = e.target.dataset.editUser;
-      const delId = e.target.dataset.delUser;
+      const editId = e.target.closest('[data-edit-user]')?.dataset.editUser;
+      const delId = e.target.closest('[data-del-user]')?.dataset.delUser;
       if (editId) {
         const u = users.find((x) => x.id === editId);
         if (u) openModal(userEditFormHtml(u));
@@ -2063,7 +2091,7 @@
     // Modales: delegación para formularios, selector de iconos y cierre
     $('modal').addEventListener('click', (e) => {
       if (scanCardOpen) return;
-      if (e.target.id === 'modal' || e.target.dataset.close !== undefined) closeModal();
+      if (e.target.id === 'modal' || e.target.closest('[data-close]')) closeModal();
     });
     $('modalBox').addEventListener('click', (e) => {
       const icon = e.target.closest('[data-icon]');
