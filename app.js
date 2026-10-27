@@ -1362,7 +1362,16 @@
   }
   // Tarjeta de confirmación: el ingreso (o la salida) se registra solo con su botón.
   // La ✕ cierra sin registrar y queda en la bitácora. Si la bitácora no se puede guardar, la tarjeta sigue abierta.
+  // La ficha que estaba abierta en Check-in se quita: la tarjeta de escaneo la reemplaza.
+  function clearCheckinDetail() {
+    checkinClient = null;
+    checkinOpen = null;
+    $('ciDetail').style.display = 'none';
+    $('ciDetail').innerHTML = '';
+  }
+
   function openScanCard(client, openEntry) {
+    clearCheckinDetail();
     const st = client.membership_status;
     const active = st === 'activa' || st === 'por_vencer';
     const endTxt = fmtDate(client.membership_end);
@@ -1416,8 +1425,8 @@
         else await api('POST', 'entries/check-in', { client_id: client.id });
         closeModal();
         toast(openEntry ? `Salida registrada: ${client.full_name}` : `Ingreso registrado: ${client.full_name}`);
+        clearCheckinDetail();
         go('checkin');
-        await showClientCheckin(client.id);
       } catch (err) {
         setBusy(btn, false);
         $('scanErr').textContent = err.message;
