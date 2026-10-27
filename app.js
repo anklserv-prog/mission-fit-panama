@@ -682,7 +682,9 @@
       <hr class="detail-divider">
       <div class="section-title">${ico('mobile')} Portal del socio</div>
       <p class="muted">El socio entra con su cédula y su contraseña para ver su tarjeta y el horario. Al crear o restablecer el acceso se genera una contraseña temporal.</p>
-      ${client.cedula ? `<div class="btn-group"><button class="btn btn-secondary btn-small" data-portal-access>${ico('key')}Crear o restablecer acceso</button></div><div id="portalResult"></div>` : '<p class="muted">Agrega la cédula del cliente para darle acceso al portal.</p>'}
+      ${!client.cedula ? '<p class="muted">Agrega la cédula del cliente para darle acceso al portal.</p>'
+        : can('admin') ? `<div class="btn-group"><button class="btn btn-secondary btn-small" data-portal-access>${ico('key')}Crear o restablecer acceso</button></div><div id="portalResult"></div>`
+          : '<p class="muted" style="margin-top:8px;">Para crear o restablecer su acceso, pídelo a la administración.</p>'}
       <hr class="detail-divider">
       <div class="section-title">${ico('idcard')} Tarjeta del cliente</div>
       ${client.code ? `
