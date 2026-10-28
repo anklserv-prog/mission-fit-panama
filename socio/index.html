@@ -3,57 +3,86 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#2563EB">
+  <meta name="theme-color" content="#0A0A0A">
+  <meta name="color-scheme" content="dark">
   <title>Portal del socio · Mission Fit</title>
   <link rel="icon" href="/img/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/img/icon-192.png">
   <link rel="manifest" href="/socio/manifest.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Mission Fit">
+  <link rel="preload" href="/vendor/fonts/barlow-condensed-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/socio/socio.css">
 </head>
-<body>
+<body data-screen="login">
+  <!-- Iconos (mismo trazo que la app del gimnasio) -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5L4.5 13.5H12l-1 8 8.5-11H12l1-8z"/></symbol>
+    <symbol id="i-idcard" viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="2"/><circle cx="8.5" cy="11" r="2.2"/><path d="M5.5 16c.5-1.6 1.6-2.4 3-2.4s2.5.8 3 2.4M14 9.5h4.5M14 13h3"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L20 3M16 7l3 3M14 9l2 2"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16.5" rx="2"/><path d="M16 2.5v4M8 2.5v4M3 10h18"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/><rect x="7" y="7" width="4" height="4" rx=".6"/><rect x="13" y="13" width="4" height="4" rx=".6"/><path d="M13.5 7.5H17v3M7.5 13.5V17h3"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><g transform="matrix(.4 0 0 .4 -8 -8)" stroke-width="5"><circle cx="50" cy="50" r="22"/><path d="M50 34v17l-12 8"/></g></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><g transform="matrix(.4 0 0 .4 -8 -8)" stroke-width="5"><path d="M36 27c-5-2-10 4-9 11 3 19 18 35 37 37 7 1 13-4 11-9l-4-10c-1-3-5-4-8-2l-7 4c-8-4-12-9-16-16l4-7c2-3 1-7-2-8z"/></g></symbol>
+    <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 20.5l1.6-5.2A8.5 8.5 0 1 1 21 11.5z"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9L2.4 17.5a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></symbol>
+  </svg>
+
+  <!-- Foto de fondo difuminada (cambia según la pantalla) -->
+  <div class="backdrop" aria-hidden="true"></div>
+
   <main class="wrap">
     <header class="top">
-      <img src="/img/icon.svg" alt="" class="logo">
-      <div>
-        <div class="brand" id="gymName">Mission Fit Panamá</div>
-        <div class="muted small">Portal del socio</div>
+      <div class="brand">
+        <span class="brand-mark"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg></span>
+        <span class="brand-text"><span class="brand-name">Mission <em>Fit</em></span><span class="brand-sub">Panamá</span></span>
       </div>
+      <span class="top-tag">Portal del socio</span>
     </header>
 
     <!-- Ingreso -->
     <section data-view="login" class="panel" hidden>
-      <h1>Ingresa</h1>
-      <p class="muted">Usa tu cédula y la contraseña que te entregó el gimnasio.</p>
+      <span class="eyebrow"><span class="eyebrow-dot"></span>Portal del socio</span>
+      <h1>Ingresa a tu <em>portal</em></h1>
+      <p class="lede">Usa tu cédula y la contraseña que te entregó el gimnasio.</p>
       <form id="loginForm" novalidate>
-        <label>Cédula
-          <input name="cedula" autocomplete="username" autocapitalize="characters" required>
+        <label class="field">Cédula
+          <span class="input-ico"><svg class="ico" aria-hidden="true"><use href="#i-idcard"/></svg>
+            <input name="cedula" autocomplete="username" autocapitalize="characters" placeholder="Ej. 8-123-4567" required></span>
         </label>
-        <label>Contraseña
-          <input name="password" type="password" autocomplete="current-password" required>
+        <label class="field">Contraseña
+          <span class="input-ico"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg>
+            <input name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña" required></span>
         </label>
         <p class="error" id="loginError" hidden></p>
-        <button class="btn primary" type="submit">Ingresar</button>
+        <button class="btn primary" type="submit">Ingresar <svg class="ico" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
       </form>
     </section>
 
     <!-- Cambio de contraseña (primer ingreso o restablecida por el gimnasio) -->
     <section data-view="password" class="panel" hidden>
-      <h1>Crea tu contraseña</h1>
-      <p class="muted">Por seguridad, cambia la contraseña temporal por una propia (mínimo 8 caracteres).</p>
+      <span class="eyebrow"><span class="eyebrow-dot"></span>Primer ingreso</span>
+      <h1>Crea tu <em>contraseña</em></h1>
+      <p class="lede">Por seguridad, cambia la contraseña temporal por una propia (mínimo 8 caracteres).</p>
       <form id="passwordForm" novalidate>
-        <label>Contraseña temporal
-          <input name="current" type="password" autocomplete="current-password" required>
+        <label class="field">Contraseña temporal
+          <span class="input-ico"><svg class="ico" aria-hidden="true"><use href="#i-key"/></svg>
+            <input name="current" type="password" autocomplete="current-password" required></span>
         </label>
-        <label>Nueva contraseña
-          <input name="password" type="password" autocomplete="new-password" minlength="8" required>
+        <label class="field">Nueva contraseña
+          <span class="input-ico"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg>
+            <input name="password" type="password" autocomplete="new-password" minlength="8" required></span>
         </label>
-        <label>Repite la nueva contraseña
-          <input name="confirm" type="password" autocomplete="new-password" minlength="8" required>
+        <label class="field">Repite la nueva contraseña
+          <span class="input-ico"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg>
+            <input name="confirm" type="password" autocomplete="new-password" minlength="8" required></span>
         </label>
         <p class="error" id="passwordError" hidden></p>
-        <button class="btn primary" type="submit">Guardar y continuar</button>
+        <button class="btn primary" type="submit">Guardar y continuar <svg class="ico" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
       </form>
     </section>
 
@@ -70,47 +99,48 @@
           <span id="status" class="pill">—</span>
         </div>
         <p id="plan" class="hero-plan">—</p>
-        <p id="expires" class="hero-sub"></p>
+        <p class="hero-sub"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg><span id="expires"></span></p>
       </div>
 
-      <section class="access" id="cardPanel">
+      <section class="access card" id="cardPanel">
         <div class="sec-head">
-          <h2>Tu acceso</h2>
+          <h2><span class="h-ico"><svg class="ico" aria-hidden="true"><use href="#i-scan"/></svg></span>Tu acceso</h2>
           <button class="info-btn" type="button" data-info-title="Tu acceso" data-info="Muestra este código en recepción para entrar. Cambia cada minuto, por eso una captura de pantalla no sirve." aria-label="Ayuda">i</button>
         </div>
         <div id="qrWrap">
-          <img id="qrImg" alt="Código QR de tu acceso">
-          <p class="code" id="qrCode"></p>
+          <div class="qr-frame"><img id="qrImg" alt="Código QR de tu acceso"></div>
+          <div class="qr-timer"><span class="qr-bar"><span id="qrBar"></span></span><p class="code" id="qrCode"></p></div>
         </div>
-        <p id="noCard" class="notice" hidden>Tu membresía no está activa. Renuévala en recepción para ver tu código de acceso.</p>
+        <p id="noCard" class="notice" hidden><svg class="ico" aria-hidden="true"><use href="#i-alert"/></svg><span>Tu membresía no está activa. Renuévala en recepción para ver tu código de acceso.</span></p>
       </section>
 
-      <details class="sec">
+      <details class="sec card">
         <summary>
-          <span class="sec-title">Horario</span>
+          <span class="sec-title"><span class="h-ico"><svg class="ico" aria-hidden="true"><use href="#i-clock"/></svg></span>Horario</span>
           <span class="chev" aria-hidden="true"></span>
         </summary>
-        <p id="schedule" class="sec-body muted">Consulta el horario en recepción.</p>
+        <p id="schedule" class="sec-body">Consulta el horario en recepción.</p>
       </details>
 
-      <details class="sec" open>
+      <details class="sec card" open>
         <summary>
-          <span class="sec-title">Contacto</span>
+          <span class="sec-title"><span class="h-ico"><svg class="ico" aria-hidden="true"><use href="#i-message"/></svg></span>Contacto</span>
           <span class="chev" aria-hidden="true"></span>
         </summary>
         <div class="contact">
           <a id="waBtn" class="wa-btn" href="#" target="_blank" rel="noopener" hidden>
             <img src="/img/whatsapp-logo.png" alt="Escribir por WhatsApp">
           </a>
-          <a id="callBtn" class="call-btn" href="#" hidden>Llamar al gimnasio</a>
+          <a id="callBtn" class="call-btn" href="#" hidden><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg>Llamar al gimnasio</a>
         </div>
       </details>
 
-      <button id="logoutBtn" class="btn link" type="button">Cerrar sesión</button>
+      <button id="logoutBtn" class="btn link" type="button"><svg class="ico" aria-hidden="true"><use href="#i-logout"/></svg>Cerrar sesión</button>
     </section>
 
     <section data-view="loading" class="panel center" hidden>
-      <p class="muted">Cargando…</p>
+      <span class="loader" aria-hidden="true"></span>
+      <p class="lede">Cargando…</p>
     </section>
   </main>
 
@@ -126,10 +156,10 @@
   <!-- Avisos del gimnasio -->
   <div id="noticeBox" class="sheet-overlay" hidden>
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="noticeTitle">
-      <div class="notice-tag">Aviso del gimnasio</div>
+      <div class="notice-tag"><span class="eyebrow-dot"></span>Aviso del gimnasio</div>
       <h2 id="noticeTitle"></h2>
       <p id="noticeBody"></p>
-      <p class="muted small" id="noticeDate"></p>
+      <p class="small" id="noticeDate"></p>
       <button class="btn primary" id="noticeOk" type="button">Entendido</button>
     </div>
   </div>

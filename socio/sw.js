@@ -1,6 +1,6 @@
 // Service worker del portal del socio (solo /socio/): deja abrir el portal sin internet con su última versión.
 // Los datos (/api/) siempre van a la red: la tarjeta y el horario nunca se muestran desactualizados.
-const CACHE = 'mf-socio-v2';
+const CACHE = 'mf-socio-v3';
 const SHELL = [
   '/socio/',
   '/socio/index.html',
@@ -11,6 +11,16 @@ const SHELL = [
   '/img/icon.svg',
   '/img/icon-192.png',
   '/img/icon-512.png',
+  '/img/whatsapp-logo.png',
+  '/img/socio-fondo-entreno.webp',
+  '/img/socio-fondo-pesas.webp',
+  '/vendor/fonts/barlow-latin-400-normal.woff2',
+  '/vendor/fonts/barlow-latin-500-normal.woff2',
+  '/vendor/fonts/barlow-latin-600-normal.woff2',
+  '/vendor/fonts/barlow-latin-700-normal.woff2',
+  '/vendor/fonts/barlow-condensed-latin-600-normal.woff2',
+  '/vendor/fonts/barlow-condensed-latin-700-normal.woff2',
+  '/vendor/fonts/barlow-condensed-latin-800-normal.woff2',
 ];
 
 self.addEventListener('install', (event) => {

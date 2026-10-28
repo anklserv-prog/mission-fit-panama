@@ -15,8 +15,10 @@
   const getToken = () => { try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; } };
   const setToken = (t) => { try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch { /* sin almacenamiento */ } };
 
+  // Muestra una pantalla. El fondo (foto difuminada) cambia según la pantalla.
   function showView(name) {
     document.querySelectorAll('[data-view]').forEach((v) => { v.hidden = v.dataset.view !== name; });
+    document.body.dataset.screen = name;
   }
 
   let toastTimer = null;
@@ -73,6 +75,7 @@
     const tick = () => {
       const secs = Math.max(0, Math.ceil((cardEndsAt - Date.now()) / 1000));
       $('qrCode').textContent = `Se renueva en ${secs} s`;
+      $('qrBar').style.width = `${Math.min(100, (secs / 60) * 100)}%`;
     };
     tick();
     tickTimer = setInterval(tick, 1000);
@@ -125,7 +128,7 @@
     }
 
     const gym = d.gym || {};
-    $('gymName').textContent = gym.name || 'Mission Fit Panamá';
+    document.title = `Portal del socio · ${gym.name || 'Mission Fit Panamá'}`;
     $('schedule').textContent = gym.schedule || 'Consulta el horario en recepción.';
     const phone = digits(gym.phone);
     const wa = digits(gym.whatsapp || gym.phone);
